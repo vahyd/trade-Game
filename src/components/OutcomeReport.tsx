@@ -11,22 +11,16 @@ function Row({ label, value, bold = false }: { label: string; value: string; bol
   );
 }
 
-export function OutcomeReport({ onNext }: { onNext: () => void }) {
+export function OutcomeReport() {
   const game = useGameStore((s) => s.game)!;
   const last = game.lastResult;
 
-  if (!last) {
-    return (
-      <Card className="p-6 text-sm text-slate-400">
-        No report yet. Make your first decisions to see outcomes.
-      </Card>
-    );
-  }
+  if (!last) return null;
 
   return (
     <div className="space-y-5">
       <Card className="p-5">
-        <h2 className="text-base font-semibold text-slate-100">Month {last.month} Report</h2>
+        <h2 className="text-base font-semibold text-slate-100">Month {last.month} Results</h2>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-2 rounded-lg border border-slate-800 p-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Income statement</div>
@@ -75,13 +69,6 @@ export function OutcomeReport({ onNext }: { onNext: () => void }) {
           ))}
         </div>
       </div>
-
-      <button
-        onClick={onNext}
-        className="w-full rounded-lg bg-slate-100 px-6 py-3 text-sm font-semibold text-slate-900 transition hover:bg-white"
-      >
-        Continue to next month →
-      </button>
     </div>
   );
 }

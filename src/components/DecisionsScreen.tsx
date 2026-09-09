@@ -3,7 +3,6 @@ import { useGameStore } from '../store/gameStore';
 import type { Decision, PlayerChoice } from '../engine/types';
 import { generateAdvisorBoard } from '../engine/advisors';
 import { Card } from './ui';
-import { formatMoney } from '../format';
 
 const CATEGORY_LABEL: Record<Decision['category'], string> = {
   currency: 'Currency Risk',
@@ -18,10 +17,16 @@ function impactColor(impact: string): string {
   return 'text-slate-400';
 }
 
-export function DecisionsScreen({ onSubmitted }: { onSubmitted: () => void }) {
+export function DecisionsScreen() {
   const game = useGameStore((s) => s.game)!;
   const submitChoices = useGameStore((s) => s.submitChoices);
-  const [selections, setSelections] = useState<Record<string, string>>({});
+  const [selections, setSelections] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {};
+    for (const d of game.decisions) {
+      initial[d.id] = d.recommendation.optionId;
+    }
+    return initial;
+  });
 
   const decisions = game.decisions;
   const advisors = generateAdvisorBoard(game.company, game.market);
@@ -38,7 +43,6 @@ export function DecisionsScreen({ onSubmitted }: { onSubmitted: () => void }) {
       followedRecommendation: selections[d.id] === d.recommendation.optionId,
     }));
     submitChoices(choices);
-    onSubmitted();
   }
 
   return (
@@ -72,15 +76,11 @@ export function DecisionsScreen({ onSubmitted }: { onSubmitted: () => void }) {
         const followed = selected === rec.optionId;
         return (
           <Card key={d.id} className="p-5">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-wide text-emerald-400">
-                  {CATEGORY_LABEL[d.category]}
-                </div>
-                <h3 className="mt-1 text-base font-semibold text-slate-100">{d.title}</h3>
-                <p className="mt-1 text-sm text-slate-400">{d.description}</p>
-              </div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-emerald-400">
+              {CATEGORY_LABEL[d.category]}
             </div>
+            <h3 className="mt-1 text-base font-semibold text-slate-100">{d.title}</h3>
+            <p className="mt-1 text-sm text-slate-400">{d.description}</p>
 
             <div className="mt-3 space-y-1">
               {d.insights.map((ins) => (
