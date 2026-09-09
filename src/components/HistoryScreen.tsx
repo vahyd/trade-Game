@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { formatCompact, formatMoney, formatSigned } from '../format';
+import { formatCompact, formatSignedCompact } from '../format';
 
 export function HistoryScreen() {
   const game = useGameStore((s) => s.game)!;
@@ -47,7 +47,7 @@ export function HistoryScreen() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                   <XAxis dataKey="month" stroke="#64748b" fontSize={12} />
                   <YAxis stroke="#64748b" fontSize={12} tickFormatter={(v) => formatCompact(Number(v))} />
-                  <Tooltip formatter={(v) => formatMoney(Number(v))} />
+                  <Tooltip formatter={(v) => formatCompact(Number(v))} />
                   <Area type="monotone" dataKey="Cash" stroke="#34d399" fill="url(#cash)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
@@ -62,7 +62,7 @@ export function HistoryScreen() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                   <XAxis dataKey="month" stroke="#64748b" fontSize={12} />
                   <YAxis stroke="#64748b" fontSize={12} tickFormatter={(v) => formatCompact(Number(v))} />
-                  <Tooltip formatter={(v) => formatMoney(Number(v))} />
+                  <Tooltip formatter={(v) => formatCompact(Number(v))} />
                   <Line type="monotone" dataKey="Revenue" stroke="#38bdf8" strokeWidth={2} dot={false} />
                   <Bar dataKey="Profit" fill="#34d399" opacity={0.6} />
                 </LineChart>
@@ -102,11 +102,11 @@ export function HistoryScreen() {
                 {game.history.map((h) => (
                   <tr key={h.month} className="border-b border-slate-800/60 text-slate-300">
                     <td className="py-1.5 pr-4">{h.month}</td>
-                    <td className="py-1.5 pr-4">{formatMoney(h.revenue)}</td>
+                    <td className="py-1.5 pr-4">{formatCompact(h.revenue)}</td>
                     <td className={`py-1.5 pr-4 ${h.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {formatSigned(h.profit)}
+                      {formatSignedCompact(h.profit)}
                     </td>
-                    <td className="py-1.5 pr-4">{formatMoney(h.cashAfter)}</td>
+                    <td className="py-1.5 pr-4">{formatCompact(h.cashAfter)}</td>
                     <td className="py-1.5 pr-4">{h.riskScore}</td>
                     <td className="py-1.5">{h.creditRating}</td>
                   </tr>

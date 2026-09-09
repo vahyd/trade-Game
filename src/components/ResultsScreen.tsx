@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { fetchLeaderboard, submitScore, type LeaderboardEntry } from '../api/client';
 import { Card } from './ui';
-import { formatMoney } from '../format';
+import { formatCompact } from '../format';
 
 function MetricBar({ label, value, weight }: { label: string; value: number; weight: string }) {
   return (
@@ -82,17 +82,17 @@ export function ResultsScreen() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Card className="p-4">
           <div className="text-xs uppercase tracking-wide text-slate-400">Company value</div>
-          <div className="mt-1 text-lg font-bold text-slate-100">{formatMoney(score.finalCompanyValue)}</div>
+          <div className="mt-1 text-lg font-bold text-slate-100">{formatCompact(score.finalCompanyValue)}</div>
         </Card>
         <Card className="p-4">
           <div className="text-xs uppercase tracking-wide text-slate-400">Total profit</div>
           <div className={`mt-1 text-lg font-bold ${score.totalProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {formatMoney(score.totalProfit)}
+            {formatCompact(score.totalProfit)}
           </div>
         </Card>
         <Card className="p-4">
           <div className="text-xs uppercase tracking-wide text-slate-400">Final cash</div>
-          <div className="mt-1 text-lg font-bold text-slate-100">{formatMoney(score.totalCash)}</div>
+          <div className="mt-1 text-lg font-bold text-slate-100">{formatCompact(score.totalCash)}</div>
         </Card>
         <Card className="p-4">
           <div className="text-xs uppercase tracking-wide text-slate-400">Risk / Rating</div>
@@ -142,7 +142,7 @@ export function ResultsScreen() {
                   <td className="py-1.5 pr-3">{e.name}</td>
                   <td className="py-1.5 pr-3 font-semibold text-slate-100">{e.score}</td>
                   <td className="py-1.5 pr-3">{e.ranking}</td>
-                  <td className="py-1.5">{formatMoney(e.total_profit)}</td>
+                  <td className="py-1.5">{formatCompact(e.total_profit)}</td>
                 </tr>
               ))}
             </tbody>

@@ -16,7 +16,7 @@ export function TitleScreen() {
           </h1>
           <p className="mx-auto mt-4 max-w-lg text-sm leading-relaxed text-slate-400">
             Step into the CFO chair of an international trading company. Manage cash, currency
-            risk, customer credit, and financing decisions across 60 months — and learn what
+            risk, customer credit, and financing decisions across 12 months — and learn what
             keeps a global trading business alive.
           </p>
         </div>

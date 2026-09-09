@@ -18,7 +18,7 @@ import {
   INTEREST_RATE,
   SALARY_PER_EMPLOYEE,
 } from './constants';
-import { formatMoney } from '../format';
+import { formatCompact } from '../format';
 
 function findChoice(choices: PlayerChoice[], id: string): PlayerChoice | undefined {
   return choices.find((c) => c.decisionId === id);
@@ -76,7 +76,7 @@ export function resolveMonth(
         outcomes.push({
           category: 'currency',
           title: 'FX loss on unhedged exposure',
-          detail: `You did not hedge your USD exposure. The USD appreciated by ${pct.toFixed(1)}%. The company lost ${formatMoney(exposure * usd)}. A partial hedge would have reduced the loss.`,
+          detail: `You did not hedge your USD exposure. The USD appreciated by ${pct.toFixed(1)}%. The company lost ${formatCompact(exposure * usd)}. A partial hedge would have reduced the loss.`,
           cashImpact: -exposure * usd,
           profitImpact: -exposure * usd,
           good: false,
@@ -85,7 +85,7 @@ export function resolveMonth(
         outcomes.push({
           category: 'currency',
           title: 'FX gain on unhedged exposure',
-          detail: `You left exposure unhedged and the USD depreciated by ${pct.toFixed(1)}%. You gained ${formatMoney(exposure * Math.abs(usd))}, but unhedged positions are risky when volatility is high.`,
+          detail: `You left exposure unhedged and the USD depreciated by ${pct.toFixed(1)}%. You gained ${formatCompact(exposure * Math.abs(usd))}, but unhedged positions are risky when volatility is high.`,
           cashImpact: exposure * Math.abs(usd),
           profitImpact: exposure * Math.abs(usd),
           good: true,
@@ -104,7 +104,7 @@ export function resolveMonth(
       outcomes.push({
         category: 'currency',
         title: `Hedged ${hedgeRatio * 100}% of exposure`,
-        detail: `You hedged ${hedgeRatio * 100}% of your USD exposure at a cost of ${formatMoney(fee)}. The USD moved ${usd > 0 ? 'up' : 'down'} ${pct.toFixed(1)}%. Your net FX impact was ${formatMoney(fxImpact)}.`,
+        detail: `You hedged ${hedgeRatio * 100}% of your USD exposure at a cost of ${formatCompact(fee)}. The USD moved ${usd > 0 ? 'up' : 'down'} ${pct.toFixed(1)}%. Your net FX impact was ${formatCompact(fxImpact)}.`,
         cashImpact: fxImpact,
         profitImpact: fxImpact,
         good: true,
@@ -128,7 +128,7 @@ export function resolveMonth(
           outcomes.push({
             category: 'credit',
             title: 'Customer defaulted',
-            detail: `You extended open credit and the customer defaulted. You wrote off ${formatMoney(loss)} in receivables. A Letter of Credit or prepayment would have protected you.`,
+            detail: `You extended open credit and the customer defaulted. You wrote off ${formatCompact(loss)} in receivables. A Letter of Credit or prepayment would have protected you.`,
             cashImpact: -loss,
             profitImpact: -loss,
             good: false,
@@ -138,7 +138,7 @@ export function resolveMonth(
           outcomes.push({
             category: 'credit',
             title: 'Order paid in full',
-            detail: `The customer paid. You earned a ${formatMoney(margin)} margin on the order. Open credit maximizes sales but carries default risk.`,
+            detail: `The customer paid. You earned a ${formatCompact(margin)} margin on the order. Open credit maximizes sales but carries default risk.`,
             cashImpact: margin,
             profitImpact: margin,
             good: true,
@@ -153,7 +153,7 @@ export function resolveMonth(
         outcomes.push({
           category: 'credit',
           title: 'Order secured via Letter of Credit',
-          detail: `The Letter of Credit guaranteed payment. You earned ${formatMoney(net)} after the ${formatMoney(fee)} bank fee.`,
+          detail: `The Letter of Credit guaranteed payment. You earned ${formatCompact(net)} after the ${formatCompact(fee)} bank fee.`,
           cashImpact: net,
           profitImpact: net,
           good: true,
@@ -175,7 +175,7 @@ export function resolveMonth(
           outcomes.push({
             category: 'credit',
             title: 'Customer accepted prepayment',
-            detail: `The customer paid 50% up front and completed the order. You earned ${formatMoney(margin)} with reduced credit exposure.`,
+            detail: `The customer paid 50% up front and completed the order. You earned ${formatCompact(margin)} with reduced credit exposure.`,
             cashImpact: margin,
             profitImpact: margin,
             good: true,
@@ -208,7 +208,7 @@ export function resolveMonth(
       outcomes.push({
         category: 'inventory',
         title: 'Increased inventory',
-        detail: `You bought ${formatMoney(step)} more inventory. Carrying costs will rise, but you are positioned for higher demand.`,
+        detail: `You bought ${formatCompact(step)} more inventory. Carrying costs will rise, but you are positioned for higher demand.`,
         cashImpact: -step,
         profitImpact: 0,
         good: true,
@@ -220,7 +220,7 @@ export function resolveMonth(
       outcomes.push({
         category: 'inventory',
         title: 'Reduced inventory',
-        detail: `You sold down ${formatMoney(sold)} of inventory, freeing cash and lowering carrying costs.`,
+        detail: `You sold down ${formatCompact(sold)} of inventory, freeing cash and lowering carrying costs.`,
         cashImpact: sold,
         profitImpact: 0,
         good: true,
@@ -252,7 +252,7 @@ export function resolveMonth(
         outcomes.push({
           category: 'financing',
           title: choice?.optionId === 'loan' ? 'Took a bank loan' : 'Issued a bond',
-          detail: `You raised ${formatMoney(amount)} to fund growth. Revenue capacity rose to ${formatMoney(next.monthlyRevenue)}/month, but debt and interest costs are now higher.`,
+          detail: `You raised ${formatCompact(amount)} to fund growth. Revenue capacity rose to ${formatCompact(next.monthlyRevenue)}/month, but debt and interest costs are now higher.`,
           cashImpact: amount,
           profitImpact: 0,
           good: true,
@@ -267,7 +267,7 @@ export function resolveMonth(
         outcomes.push({
           category: 'financing',
           title: 'Raised equity',
-          detail: `You raised ${formatMoney(amount)} by selling shares. No new debt, but your ownership is diluted to ${Math.round(next.ownership * 100)}%.`,
+          detail: `You raised ${formatCompact(amount)} by selling shares. No new debt, but your ownership is diluted to ${Math.round(next.ownership * 100)}%.`,
           cashImpact: amount,
           profitImpact: 0,
           good: true,
@@ -304,7 +304,7 @@ export function resolveMonth(
     outcomes.push({
       category: 'financial',
       title: 'Stockout — lost sales',
-      detail: `Demand was strong but your inventory was too low. You lost ${formatMoney(stockoutLoss)} in missed sales.`,
+      detail: `Demand was strong but your inventory was too low. You lost ${formatCompact(stockoutLoss)} in missed sales.`,
       cashImpact: 0,
       profitImpact: -stockoutLoss,
       good: false,
@@ -315,7 +315,7 @@ export function resolveMonth(
     outcomes.push({
       category: 'financial',
       title: 'Excess inventory costs',
-      detail: `Demand was weak while you held excess inventory, adding ${formatMoney(wasteCost)} in extra storage and spoilage costs.`,
+      detail: `Demand was weak while you held excess inventory, adding ${formatCompact(wasteCost)} in extra storage and spoilage costs.`,
       cashImpact: 0,
       profitImpact: -wasteCost,
       good: false,

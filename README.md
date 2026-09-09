@@ -8,9 +8,9 @@ Play at `http://localhost:5173/` after running the dev server.
 
 ## 🎮 Overview
 
-You run a trading company over **60 months**. Every month you:
+You run a trading company over **12 months**. Every month you:
 
-1. Review the company dashboard (cash, revenue, profit, debt, inventory, credit rating, risk score).
+1. Review your company status (cash, risk score, credit rating).
 2. Read the market news (USD moves, shipping costs, tariffs, demand, recession warnings).
 3. Make **3–5 decisions** with the help of three virtual advisors and an action-recommendation engine.
 4. See the outcomes explained in plain language.
@@ -51,8 +51,7 @@ src/
 │   └── client.ts         # Leaderboard client (optional FastAPI backend)
 └── components/           # React UI
     ├── TitleScreen.tsx
-    ├── GameShell.tsx     # Tabbed layout (Dashboard / Decisions / Report / History)
-    ├── Dashboard.tsx     # Company status + market conditions + advisors + news
+    ├── GameShell.tsx     # Single-page layout (decisions + report + charts)
     ├── DecisionsScreen.tsx
     ├── OutcomeReport.tsx
     ├── HistoryScreen.tsx # Recharts performance charts
@@ -102,7 +101,7 @@ storage if the backend is not running.
 | Profit Growth   | 30%    | Cumulative profit against a target                 |
 | Risk Management | 20%    | Inverse of average risk score                      |
 | Credit Rating   | 10%    | Final credit rating (AAA → D)                      |
-| Survival        | 10%    | Full score if you survive all 60 months            |
+| Survival        | 10%    | Full score if you survive all 12 months            |
 
 ---
 

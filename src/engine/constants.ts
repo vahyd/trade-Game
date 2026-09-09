@@ -1,6 +1,6 @@
 import type { CreditRating } from './types';
 
-export const TOTAL_MONTHS = 60;
+export const TOTAL_MONTHS = 12;
 
 export const STARTING = {
   cash: 5_000_000,

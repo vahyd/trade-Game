@@ -70,71 +70,73 @@ export function DecisionsScreen() {
         </div>
       </div>
 
-      {decisions.map((d) => {
-        const selected = selections[d.id];
-        const rec = d.recommendation;
-        const followed = selected === rec.optionId;
-        return (
-          <Card key={d.id} className="p-5">
-            <div className="text-xs font-semibold uppercase tracking-wide text-emerald-400">
-              {CATEGORY_LABEL[d.category]}
-            </div>
-            <h3 className="mt-1 text-base font-semibold text-slate-100">{d.title}</h3>
-            <p className="mt-1 text-sm text-slate-400">{d.description}</p>
-
-            <div className="mt-3 space-y-1">
-              {d.insights.map((ins) => (
-                <div key={ins.advisor} className="text-xs text-slate-500">
-                  <span className="font-medium text-slate-400">{ins.advisor}:</span> {ins.message}
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-4 space-y-2">
-              {d.options.map((opt) => (
-                <label
-                  key={opt.id}
-                  className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition ${
-                    selected === opt.id
-                      ? 'border-emerald-500 bg-emerald-500/10'
-                      : 'border-slate-800 hover:border-slate-600'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name={d.id}
-                    checked={selected === opt.id}
-                    onChange={() => setSelections((prev) => ({ ...prev, [d.id]: opt.id }))}
-                    className="mt-0.5 accent-emerald-500"
-                  />
-                  <span>
-                    <span className="block text-sm font-medium text-slate-100">{opt.label}</span>
-                    <span className="block text-xs text-slate-400">{opt.description}</span>
-                  </span>
-                </label>
-              ))}
-            </div>
-
-            <div className="mt-4 rounded-lg border border-sky-800/60 bg-sky-900/20 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-sm">
-                  <span className="font-semibold text-sky-300">
-                    Recommendation · {rec.confidence}% confidence:
-                  </span>{' '}
-                  <span className="text-slate-200">{rec.actionLabel}</span>
-                  <span className="block text-xs text-slate-400">Reason: {rec.reason}</span>
-                </div>
-                <button
-                  onClick={() => follow(d)}
-                  className="rounded-md bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-sky-500"
-                >
-                  {followed ? 'Following ✓' : 'Follow recommendation'}
-                </button>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {decisions.map((d) => {
+          const selected = selections[d.id];
+          const rec = d.recommendation;
+          const followed = selected === rec.optionId;
+          return (
+            <Card key={d.id} className="p-5">
+              <div className="text-xs font-semibold uppercase tracking-wide text-emerald-400">
+                {CATEGORY_LABEL[d.category]}
               </div>
-            </div>
-          </Card>
-        );
-      })}
+              <h3 className="mt-1 text-base font-semibold text-slate-100">{d.title}</h3>
+              <p className="mt-1 text-sm text-slate-400">{d.description}</p>
+
+              <div className="mt-3 space-y-1">
+                {d.insights.map((ins) => (
+                  <div key={ins.advisor} className="text-xs text-slate-500">
+                    <span className="font-medium text-slate-400">{ins.advisor}:</span> {ins.message}
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 space-y-2">
+                {d.options.map((opt) => (
+                  <label
+                    key={opt.id}
+                    className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition ${
+                      selected === opt.id
+                        ? 'border-emerald-500 bg-emerald-500/10'
+                        : 'border-slate-800 hover:border-slate-600'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name={d.id}
+                      checked={selected === opt.id}
+                      onChange={() => setSelections((prev) => ({ ...prev, [d.id]: opt.id }))}
+                      className="mt-0.5 accent-emerald-500"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-slate-100">{opt.label}</span>
+                      <span className="block text-xs text-slate-400">{opt.description}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="mt-4 rounded-lg border border-sky-800/60 bg-sky-900/20 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-sm">
+                    <span className="font-semibold text-sky-300">
+                      Recommendation · {rec.confidence}% confidence:
+                    </span>{' '}
+                    <span className="text-slate-200">{rec.actionLabel}</span>
+                    <span className="block text-xs text-slate-400">Reason: {rec.reason}</span>
+                  </div>
+                  <button
+                    onClick={() => follow(d)}
+                    className="rounded-md bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-sky-500"
+                  >
+                    {followed ? 'Following ✓' : 'Follow recommendation'}
+                  </button>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
 
       <button
         onClick={submit}

@@ -1,6 +1,6 @@
 import { useGameStore } from '../store/gameStore';
 import { Card } from './ui';
-import { formatMoney, formatSigned } from '../format';
+import { formatCompact, formatSignedCompact } from '../format';
 
 function Row({ label, value, bold = false }: { label: string; value: string; bold?: boolean }) {
   return (
@@ -24,27 +24,27 @@ export function OutcomeReport() {
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-2 rounded-lg border border-slate-800 p-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Income statement</div>
-            <Row label="Revenue" value={formatMoney(last.revenue)} />
-            <Row label="Cost of goods sold" value={`−${formatMoney(last.cogs)}`} />
-            <Row label="Salaries" value={`−${formatMoney(last.salaries)}`} />
-            <Row label="Overhead" value={`−${formatMoney(last.overhead)}`} />
-            <Row label="Shipping" value={`−${formatMoney(last.shipping)}`} />
-            <Row label="Interest" value={`−${formatMoney(last.interest)}`} />
-            <Row label="Inventory carrying" value={`−${formatMoney(last.carrying)}`} />
-            <Row label="Tariffs" value={`−${formatMoney(last.tariff)}`} />
+            <Row label="Revenue" value={formatCompact(last.revenue)} />
+            <Row label="Cost of goods sold" value={`−${formatCompact(last.cogs)}`} />
+            <Row label="Salaries" value={`−${formatCompact(last.salaries)}`} />
+            <Row label="Overhead" value={`−${formatCompact(last.overhead)}`} />
+            <Row label="Shipping" value={`−${formatCompact(last.shipping)}`} />
+            <Row label="Interest" value={`−${formatCompact(last.interest)}`} />
+            <Row label="Inventory carrying" value={`−${formatCompact(last.carrying)}`} />
+            <Row label="Tariffs" value={`−${formatCompact(last.tariff)}`} />
             <Row
               label="FX impact"
-              value={last.fxImpact >= 0 ? formatSigned(last.fxImpact) : `−${formatMoney(Math.abs(last.fxImpact))}`}
+              value={last.fxImpact >= 0 ? formatSignedCompact(last.fxImpact) : `−${formatCompact(Math.abs(last.fxImpact))}`}
             />
-            <Row label="Net profit" value={formatSigned(last.profit)} bold />
+            <Row label="Net profit" value={formatSignedCompact(last.profit)} bold />
           </div>
 
           <div className="space-y-2 rounded-lg border border-slate-800 p-3">
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Balance sheet</div>
-            <Row label="Cash (start)" value={formatMoney(last.cashBefore)} />
-            <Row label="Cash (end)" value={formatMoney(last.cashAfter)} bold />
-            <Row label="Debt (start)" value={formatMoney(last.debtBefore)} />
-            <Row label="Debt (end)" value={formatMoney(last.debtAfter)} />
+            <Row label="Cash (start)" value={formatCompact(last.cashBefore)} />
+            <Row label="Cash (end)" value={formatCompact(last.cashAfter)} bold />
+            <Row label="Debt (start)" value={formatCompact(last.debtBefore)} />
+            <Row label="Debt (end)" value={formatCompact(last.debtAfter)} />
             <Row label="Credit rating" value={last.creditRating} bold />
             <Row label="Risk score" value={`${last.riskScore}/100`} bold />
           </div>
