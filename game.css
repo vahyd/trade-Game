@@ -1,0 +1,54 @@
+/* Construction CFO Simulator — game-specific styles (extends styles.css). */
+
+.event{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:14px 16px;border-radius:12px;margin-top:14px;border:1px solid var(--line)}
+.event b{font:700 14px Manrope;color:var(--ink)}
+.event p{width:100%;margin:0;font-size:12px;color:var(--muted)}
+.event.good{background:#eef6f0;border-color:#cfe5d6}
+.event.bad{background:#fdf1ec;border-color:#f2d3c5}
+.badge{font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#fff;background:var(--sage);padding:3px 8px;border-radius:99px}
+.event .badge{background:var(--orange)}
+.event.good .badge{background:var(--sage)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}
+.chips span{font-size:11px;font-weight:600;color:var(--green);background:#fff;border:1px solid var(--line);padding:3px 9px;border-radius:99px}
+
+.decisions{display:grid;grid-template-columns:1fr;gap:14px;margin-top:16px}
+@media(min-width:820px){.decisions{grid-template-columns:1fr 1fr}}
+.decision{padding:18px}
+.d-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.d-head b{font:700 15px Manrope;color:var(--ink)}
+.d-desc{margin:6px 0 12px;font-size:12px;color:var(--muted);line-height:1.5}
+.d-options{display:grid;gap:8px}
+.d-option{display:flex;flex-direction:column;gap:2px;text-align:left;border:1px solid var(--line);background:#fff;border-radius:10px;padding:11px 13px;cursor:pointer;transition:.15s}
+.d-option:hover{border-color:var(--sage)}
+.d-option b{font:600 12px Manrope;color:var(--ink)}
+.d-option span{font-size:11px;color:var(--muted)}
+.d-option.active{border-color:var(--green);background:#eef4f1;box-shadow:inset 3px 0 0 var(--green)}
+.rec{margin-top:14px;border-radius:10px;background:#fbf7ee;border:1px solid #ecdfc0;padding:11px 13px;display:flex;flex-direction:column;gap:3px}
+.rec i{font-style:normal;font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#a8822f}
+.rec b{font:600 12px Manrope;color:var(--ink)}
+.rec span{font-size:11px;color:var(--muted)}
+
+.risk-list{display:grid;gap:12px}
+.risk-list>div{display:grid;grid-template-columns:120px 1fr 34px;align-items:center;gap:10px;font-size:11px;color:var(--muted)}
+.risk-list>div>b{text-align:right;color:var(--ink);font:700 11px Manrope}
+
+.lesson{border-left:3px solid var(--sage);padding:10px 14px;margin-top:12px;background:#fbfcfa;border-radius:0 8px 8px 0}
+.lesson b{font:600 13px Manrope;color:var(--ink)}
+.lesson p{margin:4px 0 0;font-size:12px;color:var(--muted);line-height:1.5}
+.lesson p.better{color:var(--sage)}
+
+.advance-bar{display:flex;justify-content:flex-end;margin-top:16px}
+.advance-bar button{font:600 13px Manrope;padding:11px 22px;border-radius:10px;border:0;cursor:pointer}
+button.primary{background:var(--green);color:#fff}
+button.primary:hover{background:#285249}
+
+.profit-chart{display:flex;align-items:flex-end;gap:6px;height:120px;margin-top:10px}
+.pbar{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
+.pbar i{width:100%;max-width:34px;border-radius:4px 4px 0 0}
+.pbar span{font-size:9px;color:var(--muted);margin-top:3px}
+
+.result-hero{display:flex;align-items:baseline;gap:16px;padding:22px;border-radius:14px;background:var(--green);color:#fff;margin-bottom:16px}
+.result-hero .score{font:700 54px Manrope}
+.result-hero .rank{font:600 20px Manrope;color:#e1b663}
+
+.pill.warn{background:#f7e7c9;color:#a8822f}

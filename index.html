@@ -1,13 +1,42 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Trade CFO — Trading Company Finance Simulator</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trade CFO Simulator</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="game.css">
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="logo"><i>TF</i><span><b>Trade CFO</b><small>TRADE FINANCE</small></span></div>
+    <nav>
+      <button class="active" data-page="Dashboard">▦ <span>Dashboard</span></button>
+      <button data-page="Decisions">⌁ <span>Decisions</span></button>
+      <button data-page="Market">◈ <span>Market</span></button>
+      <button data-page="Financing">◇ <span>Financing</span></button>
+      <button data-page="Reports">▤ <span>Reports</span></button>
+    </nav>
+    <div class="side-note">
+      <small>COMPANY STATUS</small>
+      <b id="side-rating">BBB · risk 30</b>
+      <p id="side-rep">Risk score 30/100</p>
+      <div><i id="side-bar" style="width:30%"></i></div>
+      <span id="side-cash">Cash $5.0M · debt $2.0M</span>
+    </div>
+    <div class="user"><i>TF</i><span><b>You</b><small>Chief Financial Officer</small></span></div>
+  </aside>
+  <main>
+    <header>
+      <button class="menu">☰</button>
+      <div class="project"><span>COMPANY</span><b>Trade CFO Simulator</b><small id="hdr-month">Month 1 of 12</small></div>
+      <div class="actions"><button id="newgame">↧ New game</button></div>
+    </header>
+    <section id="view"></section>
+  </main>
+</div>
+<script src="game.js"></script>
+<script src="app.js"></script>
+</body>
 </html>
