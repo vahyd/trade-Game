@@ -1,112 +1,53 @@
 import { create } from 'zustand';
-import { GameEngine } from '../engine/GameEngine';
-import type { RoundBriefing } from '../engine/TraderAdvisor';
-import type {
-  GameConfig, CountryId, CommodityId, TradeOrder, ContractType,
-  GameState, RoundResult, ExecutedTrade, TradeContract,
-} from '../engine/types';
+import type { GameState, PlayerChoice } from '../engine/types';
+import { createGame, resolveChoices } from '../engine/gameEngine';
+
+const STORAGE_KEY = 'cfo-game-state-v1';
 
 interface GameStore {
-  engine: GameEngine | null;
-  state: GameState | null;
-  selectedTab: string;
-  lastRoundResult: RoundResult | null;
-  learningHint: string | null;
-  briefing: RoundBriefing | null;
-
-  // Actions
-  startGame: (config: GameConfig) => void;
-  selectCountry: (countryId: CountryId) => void;
-  executeRound: () => void;
-  setTab: (tab: string) => void;
-  addTradeOrder: (order: TradeOrder) => void;
-  createContract: (
-    seller: CountryId, buyer: CountryId, commodityId: CommodityId,
-    quantity: number, price: number, currency: string, type: ContractType, rounds?: number
-  ) => TradeContract;
-  saveGame: () => void;
-  loadGame: () => boolean;
-  deleteSave: () => void;
+  game: GameState | null;
+  hasSaved: boolean;
+  newGame: (seed?: number) => void;
+  submitChoices: (choices: PlayerChoice[]) => void;
+  backToTitle: () => void;
 }
 
+function loadSaved(): GameState | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as GameState;
+    if (parsed && parsed.phase) return parsed;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+const initialGame = loadSaved();
+
 export const useGameStore = create<GameStore>((set, get) => ({
-  engine: null,
-  state: null,
-  selectedTab: 'trade',
-  lastRoundResult: null,
-  learningHint: null,
-  briefing: null,
+  game: initialGame,
+  hasSaved: initialGame !== null,
 
-  startGame: (config: GameConfig) => {
-    const engine = new GameEngine(config);
-    setTimeout(() => {
-      engine.state.phase = 'country-select';
-      engine.state.countries[config.humanCountryId].isHuman = true;
-    }, 0);
-    set({ engine, state: engine.state, selectedTab: 'trade', lastRoundResult: null, learningHint: null, briefing: null });
+  newGame: (seed) => {
+    const s = seed ?? Math.floor(Math.random() * 0xffffffff);
+    const game = createGame(s);
+    set({ game, hasSaved: false });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(game));
   },
 
-  selectCountry: (countryId: CountryId) => {
-    const { engine } = get();
-    if (!engine) return;
-    engine.state.config.humanCountryId = countryId;
-    // Reset isHuman flags
-    for (const c of Object.values(engine.state.countries)) {
-      c.isHuman = c.id === countryId;
-    }
-    engine.state.phase = 'playing';
-    set({ state: { ...engine.state } });
+  submitChoices: (choices) => {
+    const g = get().game;
+    if (!g) return;
+    const next = structuredClone(g);
+    resolveChoices(next, choices);
+    set({ game: next });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   },
 
-  executeRound: () => {
-    const { engine } = get();
-    if (!engine || engine.state.gameOver) return;
-    const result = engine.executeRound();
-    set({
-      state: { ...engine.state },
-      lastRoundResult: result,
-      briefing: engine.lastBriefing,
-    });
-  },
-
-  setTab: (tab: string) => set({ selectedTab: tab }),
-
-  addTradeOrder: (order: TradeOrder) => {
-    const { engine } = get();
-    if (!engine) return;
-    engine.addTradeOrder(order);
-    set({ state: { ...engine.state } });
-  },
-
-  createContract: (seller, buyer, commodityId, quantity, price, currency, type, rounds = 4) => {
-    const { engine } = get();
-    if (!engine) throw new Error('No engine');
-    const contract = engine.createContract(seller, buyer, commodityId, quantity, price, currency, type, rounds);
-    set({ state: { ...engine.state } });
-    return contract;
-  },
-
-  saveGame: () => {
-    const { engine } = get();
-    if (!engine) return;
-    localStorage.setItem('tradeshock-save', engine.saveGame());
-  },
-
-  loadGame: () => {
-    const saved = localStorage.getItem('tradeshock-save');
-    if (!saved) return false;
-    try {
-      const data = JSON.parse(saved);
-      const engine = new GameEngine(data.config);
-      engine.loadGame(saved);
-      set({ engine, state: engine.state, selectedTab: 'dashboard', lastRoundResult: null });
-      return true;
-    } catch {
-      return false;
-    }
-  },
-
-  deleteSave: () => {
-    localStorage.removeItem('tradeshock-save');
+  backToTitle: () => {
+    localStorage.removeItem(STORAGE_KEY);
+    set({ game: null, hasSaved: false });
   },
 }));
