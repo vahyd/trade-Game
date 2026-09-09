@@ -43,7 +43,6 @@ export const SCORING_WEIGHTS = {
 
 export const FX_EXPOSURE = 1_000_000;
 export const CREDIT_ORDER = 2_000_000;
-export const FINANCING_AMOUNT = 3_000_000;
 export const INVENTORY_STEP = 1_000_000;
 
 export const BANKRUPTCY_CASH_FLOOR = -1_000_000;

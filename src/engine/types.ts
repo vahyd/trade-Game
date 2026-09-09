@@ -1,10 +1,31 @@
 export type CreditRating = 'AAA' | 'AA' | 'A' | 'BBB' | 'BB' | 'B' | 'CCC' | 'D';
 
-export type DecisionCategory = 'currency' | 'credit' | 'financing' | 'inventory';
+export type DecisionCategory = 'currency' | 'credit' | 'inventory';
 
 export type AdvisorName = 'Treasury' | 'Risk Manager' | 'Market Analyst';
 
 export type Impact = 'positive' | 'negative' | 'neutral';
+
+export type EventCategory = 'economic' | 'geopolitical' | 'operational';
+
+export interface MarketEffects {
+  usdChange?: number;
+  shipping?: number;
+  tariff?: number;
+  demand?: number;
+  recession?: number;
+  interestSurcharge?: number;
+  costPressure?: number;
+}
+
+export interface GameEvent {
+  id: string;
+  name: string;
+  category: EventCategory;
+  description: string;
+  impact: 'positive' | 'negative';
+  effects: MarketEffects;
+}
 
 export interface NewsItem {
   id: string;
@@ -34,6 +55,8 @@ export interface MarketState {
   tariffRate: number;
   demandIndex: number;
   recessionRisk: number;
+  interestSurcharge: number;
+  costPressure: number;
 }
 
 export interface DecisionOption {
@@ -129,6 +152,7 @@ export interface GameState {
   seed: number;
   company: CompanyState;
   market: MarketState;
+  event: GameEvent | null;
   news: NewsItem[];
   decisions: Decision[];
   history: MonthResult[];

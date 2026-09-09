@@ -7,12 +7,7 @@ import type {
   Recommendation,
 } from './types';
 import type { Rng } from './rng';
-import {
-  CREDIT_ORDER,
-  FINANCING_AMOUNT,
-  FX_EXPOSURE,
-  INVENTORY_STEP,
-} from './constants';
+import { CREDIT_ORDER, FX_EXPOSURE, INVENTORY_STEP } from './constants';
 
 function opts(entries: [string, string, string][]): DecisionOption[] {
   return entries.map(([id, label, description]) => ({ id, label, description }));
@@ -24,12 +19,11 @@ export function generateDecisions(
   market: MarketState,
   month: number,
 ): Decision[] {
-  const decisions: Decision[] = [];
-  decisions.push(currencyDecision(market, month));
-  decisions.push(creditDecision(rng, market, month));
-  decisions.push(inventoryDecision(rng, company, market, month));
-  if (rng.chance(0.5)) decisions.push(financingDecision(rng, company, market, month));
-  return decisions;
+  return [
+    currencyDecision(market, month),
+    creditDecision(rng, market, month),
+    inventoryDecision(rng, company, market, month),
+  ];
 }
 
 function currencyDecision(market: MarketState, month: number): Decision {
@@ -197,61 +191,6 @@ function inventoryDecision(rng: Rng, company: CompanyState, market: MarketState,
       ['increase', 'Increase inventory', `Buy $${(INVENTORY_STEP / 1_000_000).toFixed(1)}M more stock.`],
       ['keep', 'Keep inventory stable', 'Leave stock levels unchanged.'],
       ['reduce', 'Reduce inventory', `Sell down $${(INVENTORY_STEP / 1_000_000).toFixed(1)}M of stock.`],
-    ]),
-    insights,
-    recommendation,
-  };
-}
-
-function financingDecision(rng: Rng, company: CompanyState, market: MarketState, month: number): Decision {
-  const leverage = company.debt / Math.max(company.cash + company.inventory, 1);
-
-  const insights: AdvisorInsight[] = [
-    {
-      advisor: 'Treasury',
-      message: leverage > 0.6 ? 'Your leverage is already high — adding debt is risky.' : 'Your balance sheet can support more debt if needed.',
-    },
-    {
-      advisor: 'Market Analyst',
-      message: market.recessionRisk > 55 ? 'Growth now could be costly if the economy turns.' : 'Market conditions favor expansion.',
-    },
-  ];
-
-  let optionId: string;
-  let actionLabel: string;
-  let reason: string;
-  if (leverage > 0.7) {
-    optionId = 'equity';
-    actionLabel = 'Raise equity';
-    reason = 'High debt — equity funding avoids more leverage.';
-  } else if (market.recessionRisk > 55) {
-    optionId = 'none';
-    actionLabel = 'Do nothing';
-    reason = 'Recession risk is high — deferring expansion is safer.';
-  } else {
-    optionId = 'loan';
-    actionLabel = 'Take a bank loan';
-    reason = 'Favorable conditions — a bank loan funds growth cheaply.';
-  }
-
-  const recommendation: Recommendation = {
-    optionId,
-    actionLabel,
-    reason,
-    confidence: Math.round(60 + rng.float(0, 20)),
-  };
-
-  return {
-    id: `financing-${month}`,
-    category: 'financing',
-    title: 'Financing — growth opportunity',
-    description: `A growth opportunity requires $${(FINANCING_AMOUNT / 1_000_000).toFixed(1)} million to expand into a new market.`,
-    amount: FINANCING_AMOUNT,
-    options: opts([
-      ['loan', 'Bank loan', 'Borrow the funds; adds debt and interest.'],
-      ['bond', 'Issue bond', 'Borrow via a bond; fixed coupon, adds debt.'],
-      ['equity', 'Raise equity', 'Sell shares; no new debt but dilutes ownership.'],
-      ['none', 'Do nothing', 'Pass on the opportunity; no cash or debt change.'],
     ]),
     insights,
     recommendation,

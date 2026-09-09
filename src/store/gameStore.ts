@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { GameState, PlayerChoice } from '../engine/types';
 import { createGame, resolveChoices } from '../engine/gameEngine';
 
-const STORAGE_KEY = 'cfo-game-state-v1';
+const STORAGE_KEY = 'cfo-game-state-v2';
 
 interface GameStore {
   game: GameState | null;

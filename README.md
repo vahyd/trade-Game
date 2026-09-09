@@ -1,6 +1,6 @@
 # Trade CFO
 
-**A browser-based CFO simulation game** for an international trading company. You step into the Chief Financial Officer's chair and make monthly decisions on currency risk, customer credit, inventory, and financing — then watch how each choice plays out on the company's financials.
+**A browser-based CFO simulation game** for an international trading company. You step into the Chief Financial Officer's chair and make monthly decisions on currency risk, customer credit, and inventory — while random economic, geopolitical, and operational shocks hit the market — then watch how each choice plays out on the company's financials.
 
 Play at `http://localhost:5173/` after running the dev server.
 
@@ -11,12 +11,34 @@ Play at `http://localhost:5173/` after running the dev server.
 You run a trading company over **12 months**. Every month you:
 
 1. Review your company status (cash, risk score, credit rating).
-2. Read the market news (USD moves, shipping costs, tariffs, demand, recession warnings).
-3. Make **3–5 decisions** with the help of three virtual advisors and an action-recommendation engine.
+2. Read the market news and the monthly **shock event** (recession, trade war, port closure…).
+3. Make **3 decisions** on currency, credit, and inventory, guided by three AI advisors and an action-recommendation engine.
 4. See the outcomes explained in plain language.
 5. Watch the scoreboard update and move to the next month.
 
 Your final score ranks you as a **Poor, Average, Good, or Expert CFO**.
+
+---
+
+## 📊 Three major indicators
+
+The AI advisors track three indicators that shift every month (and are nudged by events):
+
+| Indicator     | Advisor         | What it drives                  |
+|---------------|-----------------|---------------------------------|
+| Currency (FX) | Treasury        | USD movement → hedging decisions|
+| Credit Climate| Risk Manager    | Default / recession risk → credit decisions |
+| Supply Chain  | Market Analyst  | Shipping & tariffs → inventory decisions |
+
+---
+
+## ⚡ Event Engine
+
+Every month a random event fires and shifts the indicators:
+
+- **Economic** — Recession, Inflation shock, Interest-rate hike, Banking crisis
+- **Geopolitical** — Trade war, Sanctions, Tariff increases, New trade agreement
+- **Operational** — Cyberattack, Supplier bankruptcy, Port closure, Labor strike
 
 ---
 
@@ -27,7 +49,6 @@ Your final score ranks you as a **Poor, Average, Good, or Expert CFO**.
 - Foreign exchange risk (hedging)
 - Cash flow & liquidity management
 - Credit risk
-- Financing choices (debt vs. equity)
 
 ---
 
@@ -40,8 +61,9 @@ src/
 │   ├── rng.ts            # Seeded RNG (mulberry32) for reproducible games
 │   ├── constants.ts      # Starting company, cost structure, scoring weights
 │   ├── world.ts          # Market simulation + monthly news engine
-│   ├── decisions.ts      # Decision/scenario generator (FX, credit, inventory, financing)
-│   ├── advisors.ts       # Virtual advisors (Treasury, Risk Manager, Market Analyst)
+│   ├── events.ts         # Event engine (12 economic/geopolitical/operational shocks)
+│   ├── decisions.ts      # Decision generator (currency, credit, inventory)
+│   ├── advisors.ts       # AI advisors tracking the three major indicators
 │   ├── outcomes.ts       # Outcome engine + monthly P&L
 │   ├── scoring.ts        # 0–100 economic score & ranking
 │   └── gameEngine.ts     # Month orchestrator
@@ -51,7 +73,7 @@ src/
 │   └── client.ts         # Leaderboard client (optional FastAPI backend)
 └── components/           # React UI
     ├── TitleScreen.tsx
-    ├── GameShell.tsx     # Single-page layout (decisions + report + charts)
+    ├── GameShell.tsx     # Single-page layout (event + indicators + decisions + charts)
     ├── DecisionsScreen.tsx
     ├── OutcomeReport.tsx
     ├── HistoryScreen.tsx # Recharts performance charts

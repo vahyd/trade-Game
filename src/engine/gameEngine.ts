@@ -3,6 +3,7 @@ import { createRng, monthSeed } from './rng';
 import { BANKRUPTCY_CASH_FLOOR, STARTING, TOTAL_MONTHS } from './constants';
 import { generateMarket, generateNews } from './world';
 import { generateDecisions } from './decisions';
+import { generateEvent, applyEvent } from './events';
 import { resolveMonth } from './outcomes';
 import { computeScore } from './scoring';
 
@@ -12,6 +13,8 @@ const EMPTY_MARKET = {
   tariffRate: 0,
   demandIndex: 70,
   recessionRisk: 20,
+  interestSurcharge: 0,
+  costPressure: 0,
 };
 
 function freshCompany() {
@@ -34,6 +37,8 @@ function freshCompany() {
 function beginMonth(state: GameState): void {
   const rng = createRng(monthSeed(state.seed, state.month));
   state.market = generateMarket(rng, state.month === 1 ? null : state.market);
+  state.event = generateEvent(rng, state.event?.id);
+  applyEvent(state.event, state.market);
   state.news = generateNews(rng, state.market, state.month);
   state.decisions = generateDecisions(rng, state.company, state.market, state.month);
 }
@@ -45,6 +50,7 @@ export function createGame(seed: number): GameState {
     seed,
     company: freshCompany(),
     market: EMPTY_MARKET,
+    event: null,
     news: [],
     decisions: [],
     history: [],

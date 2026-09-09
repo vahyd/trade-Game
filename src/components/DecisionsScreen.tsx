@@ -7,7 +7,6 @@ import { Card } from './ui';
 const CATEGORY_LABEL: Record<Decision['category'], string> = {
   currency: 'Currency Risk',
   credit: 'Customer Credit',
-  financing: 'Financing',
   inventory: 'Inventory',
 };
 

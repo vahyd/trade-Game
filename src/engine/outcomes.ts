@@ -45,7 +45,6 @@ export function resolveMonth(
   let fxImpact = 0;
   let decisionProfit = 0;
   let inventoryCashFlow = 0;
-  let financingCashFlow = 0;
   let stockoutLoss = 0;
   let wasteCost = 0;
 
@@ -237,65 +236,14 @@ export function resolveMonth(
     }
   }
 
-  // ---- Financing ----
-  const financing = decisions.find((d) => d.category === 'financing');
-  if (financing) {
-    const choice = findChoice(choices, financing.id);
-    const amount = financing.amount;
-    switch (choice?.optionId) {
-      case 'loan':
-      case 'bond': {
-        financingCashFlow = amount;
-        next.debt += amount;
-        next.monthlyRevenue += 60_000;
-        next.employees += 2;
-        outcomes.push({
-          category: 'financing',
-          title: choice?.optionId === 'loan' ? 'Took a bank loan' : 'Issued a bond',
-          detail: `You raised ${formatCompact(amount)} to fund growth. Revenue capacity rose to ${formatCompact(next.monthlyRevenue)}/month, but debt and interest costs are now higher.`,
-          cashImpact: amount,
-          profitImpact: 0,
-          good: true,
-        });
-        break;
-      }
-      case 'equity': {
-        financingCashFlow = amount;
-        next.ownership *= 0.85;
-        next.monthlyRevenue += 60_000;
-        next.employees += 2;
-        outcomes.push({
-          category: 'financing',
-          title: 'Raised equity',
-          detail: `You raised ${formatCompact(amount)} by selling shares. No new debt, but your ownership is diluted to ${Math.round(next.ownership * 100)}%.`,
-          cashImpact: amount,
-          profitImpact: 0,
-          good: true,
-        });
-        break;
-      }
-      case 'none':
-      default:
-        outcomes.push({
-          category: 'financing',
-          title: 'Passed on growth',
-          detail: 'You did nothing and missed the growth opportunity — no new debt or cash, but revenue capacity is unchanged.',
-          cashImpact: 0,
-          profitImpact: 0,
-          good: false,
-        });
-        break;
-    }
-  }
-
   // ---- Monthly P&L ----
   const demandMultiplier = 0.8 + (market.demandIndex / 100) * 0.4;
   const revenue = next.monthlyRevenue * demandMultiplier;
-  const cogs = revenue * COGS_RATIO;
+  const cogs = revenue * (COGS_RATIO + market.costPressure);
   const salaries = next.employees * SALARY_PER_EMPLOYEE;
   const overhead = FIXED_OVERHEAD;
   const shipping = BASE_SHIPPING * market.shippingMultiplier;
-  const interest = next.debt * INTEREST_RATE[next.creditRating];
+  const interest = next.debt * (INTEREST_RATE[next.creditRating] + market.interestSurcharge);
   const carrying = next.inventory * INVENTORY_CARRY_RATE;
   const tariff = cogs * market.tariffRate;
 
@@ -325,7 +273,7 @@ export function resolveMonth(
   const operatingProfit = revenue - cogs - salaries - overhead - shipping - interest - carrying - tariff;
   const profit = operatingProfit + fxImpact + decisionProfit - stockoutLoss - wasteCost;
   const cashDelta =
-    operatingProfit + fxImpact + decisionProfit - stockoutLoss - wasteCost + inventoryCashFlow + financingCashFlow;
+    operatingProfit + fxImpact + decisionProfit - stockoutLoss - wasteCost + inventoryCashFlow;
 
   next.cash += cashDelta;
   next.cumulativeProfit += profit;

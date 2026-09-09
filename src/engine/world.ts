@@ -10,6 +10,8 @@ export function generateMarket(rng: Rng, prev: MarketState | null): MarketState 
       tariffRate: rng.chance(0.2) ? rng.float(0.05, 0.12) : 0,
       demandIndex: rng.int(60, 80),
       recessionRisk: rng.int(10, 30),
+      interestSurcharge: 0,
+      costPressure: 0,
     };
   }
 
@@ -25,7 +27,15 @@ export function generateMarket(rng: Rng, prev: MarketState | null): MarketState 
   const demandIndex = clamp(prev.demandIndex + rng.float(-14, 14), 30, 96);
   const recessionRisk = clamp(prev.recessionRisk + rng.float(-12, 12), 0, 100);
 
-  return { usdChange, shippingMultiplier, tariffRate, demandIndex, recessionRisk };
+  return {
+    usdChange,
+    shippingMultiplier,
+    tariffRate,
+    demandIndex,
+    recessionRisk,
+    interestSurcharge: 0,
+    costPressure: 0,
+  };
 }
 
 export function generateNews(rng: Rng, market: MarketState, month: number): NewsItem[] {
