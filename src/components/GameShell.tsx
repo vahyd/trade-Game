@@ -5,6 +5,7 @@ import { HistoryScreen } from './HistoryScreen';
 import { formatCompact, formatPercent, formatRisk } from '../format';
 import { ratingColor } from './ui';
 import { TOTAL_MONTHS } from '../engine/constants';
+import type { GameEvent } from '../engine/types';
 
 function Indicator({
   label,
@@ -29,6 +30,32 @@ function Indicator({
       <div className={`mt-1 text-sm font-semibold ${color}`}>{value}</div>
     </div>
   );
+}
+
+interface EffectChip {
+  label: string;
+  text: string;
+  up: boolean;
+  good: boolean;
+}
+
+function eventEffects(event: GameEvent): EffectChip[] {
+  const e = event.effects;
+  const defs: { label: string; delta?: number; fmt: (n: number) => string; goodWhenUp: boolean }[] = [
+    { label: 'Demand', delta: e.demand, fmt: (n) => `${n > 0 ? '+' : ''}${Math.round(n)}`, goodWhenUp: true },
+    { label: 'USD', delta: e.usdChange, fmt: (n) => `${n > 0 ? '+' : ''}${(n * 100).toFixed(1)}%`, goodWhenUp: false },
+    { label: 'Shipping', delta: e.shipping, fmt: (n) => `${n > 0 ? '+' : ''}${n.toFixed(1)}×`, goodWhenUp: false },
+    { label: 'Tariff', delta: e.tariff, fmt: (n) => `${n > 0 ? '+' : ''}${(n * 100).toFixed(0)}%`, goodWhenUp: false },
+    { label: 'Recession', delta: e.recession, fmt: (n) => `${n > 0 ? '+' : ''}${Math.round(n)}`, goodWhenUp: false },
+    { label: 'Interest', delta: e.interestSurcharge, fmt: (n) => `${n > 0 ? '+' : ''}${(n * 100).toFixed(1)}%`, goodWhenUp: false },
+    { label: 'Costs', delta: e.costPressure, fmt: (n) => `${n > 0 ? '+' : ''}${(n * 100).toFixed(0)}%`, goodWhenUp: false },
+  ];
+  const chips: EffectChip[] = [];
+  for (const d of defs) {
+    if (!d.delta) continue;
+    chips.push({ label: d.label, text: d.fmt(d.delta), up: d.delta > 0, good: d.goodWhenUp ? d.delta > 0 : d.delta < 0 });
+  }
+  return chips;
 }
 
 export function GameShell() {
@@ -73,12 +100,29 @@ export function GameShell() {
           }`}
         >
           <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Monthly event · {game.event.category}
+            Monthly shock · {game.event.category}
           </div>
-          <div className={`mt-1 text-base font-semibold ${game.event.impact === 'negative' ? 'text-rose-300' : 'text-emerald-300'}`}>
-            {game.event.name}
+          <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
+            <div
+              className={`text-lg font-bold ${game.event.impact === 'negative' ? 'text-rose-300' : 'text-emerald-300'}`}
+              title={game.event.description}
+            >
+              {game.event.name}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {eventEffects(game.event).map((c) => (
+                <span
+                  key={c.label}
+                  className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium ${
+                    c.good ? 'bg-emerald-500/10 text-emerald-300' : 'bg-rose-500/10 text-rose-300'
+                  }`}
+                >
+                  <span>{c.up ? '▲' : '▼'}</span>
+                  {c.label} {c.text}
+                </span>
+              ))}
+            </div>
           </div>
-          <p className="mt-1 text-sm text-slate-300">{game.event.description}</p>
         </div>
       )}
 
