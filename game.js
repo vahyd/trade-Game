@@ -1,4 +1,12 @@
-/* Trade CFO Simulator — game engine (pure JS, no DOM). */
+/* Trade CFO Simulator — game engine (pure JS, no DOM).
+   Three-agent decision model:
+     - Agent A  : Working Capital Management    (inventory + credit terms policy)
+     - Agent B  : Currency & Hedging            (cost & risk adjuster)
+     - Agent C  : Financing                     (cash / debt / factoring funding mix)
+   Each month a portfolio of ranked opportunities is generated; the agents score
+   every opportunity and the engine selects the capital-efficient combination.
+   Expected Economic Profit = PnL − Capital Charge (funding cost) − Hedge Cost − Residual Risk Penalty.
+*/
 'use strict';
 (function (global) {
   const TOTAL_MONTHS = 12;
@@ -12,13 +20,86 @@
   const FIXED_OVERHEAD = 100000;
   const BASE_SHIPPING = 60000;
   const INVENTORY_CARRY_RATE = 0.01;
-  const CREDIT_MARGIN = 0.15;
-  const INTEREST_RATE = { AAA: 0.003, AA: 0.0035, A: 0.004, BBB: 0.005, BB: 0.008, B: 0.012, CCC: 0.018, D: 0.03 };
+  const IMPORT_MARGIN = 0.22;
+  const EXPORT_MARGIN = 0.15;
+  const DEFAULT_LOSS_RATE = 0.70;      // share of a receivable written off on default
+  const INTEREST_RATE = { AAA: 0.0025, AA: 0.003, A: 0.0035, BBB: 0.004, BB: 0.006, B: 0.009, CCC: 0.014, D: 0.025 };
   const SCORING_WEIGHTS = { cashGrowth: 0.3, profitGrowth: 0.3, riskManagement: 0.2, creditRating: 0.1, survival: 0.1 };
-  const FX_EXPOSURE = 1000000;
-  const CREDIT_ORDER = 2000000;
-  const INVENTORY_STEP = 1000000;
   const BANKRUPTCY_CASH_FLOOR = -1000000;
+
+  /* ---------- Agent parameters ---------- */
+  const HEDGE_FEE_RATE = 0.005;      // cost of hedging per $ of exposure
+  const FX_RISK_FACTOR = 1.0;        // residual FX risk penalty multiplier
+  const SHORT_RATE = 0.004;          // liquidity cost of tying up cash
+  const HIGH_DEFAULT_RISK = 0.3;      // Agent A threshold for a "limited" flag
+
+  // Agent A working-capital postures — inventory target + credit terms + cash reserve
+  const WC_POSTURES = {
+    lean:       { limit: 0.4, floor: 0.25, invMult: 2.0, creditEase: -0.10, demandShift: -6 },
+    balanced:   { limit: 0.6, floor: 0.15, invMult: 3.0, creditEase: 0.00, demandShift: 0 },
+    aggressive: { limit: 0.8, floor: 0.05, invMult: 4.0, creditEase: 0.10, demandShift: 6 },
+  };
+  // Currencies traded — volatility factor relative to USD.
+  const CURRENCY_FX = { USD: 1.0, EUR: 0.9, GBP: 1.1, AED: 0.2, CNY: 0.4 };
+  const FACTORING_FEE_RATE = 0.006;
+  const FUNDING_MODES = {
+    cash:      { label: 'Cash',      budgetMult: 1.0, riskAdd: 0 },
+    debt:      { label: 'Debt',      budgetMult: 3.0, riskAdd: 3 },
+    factoring: { label: 'Factoring', budgetMult: 2.8, riskAdd: -12 },
+  };
+  // Financing mix — three source shares (cash / debt / factoring) that always sum to 1.
+  function financingPlan(company, market, totalCapital, shares) {
+    const debtRate = INTEREST_RATE[company.creditRating] + (market.interestSurcharge || 0);
+    const cashRate = SHORT_RATE;
+    const factoringRate = FACTORING_FEE_RATE;
+    const c = clamp(shares.cash || 0, 0, 1);
+    const d = clamp(shares.debt || 0, 0, 1);
+    const f = clamp(shares.factoring || 0, 0, 1);
+    const sum = (c + d + f) || 1;
+    const cash = c / sum, debt = d / sum, factoring = f / sum;
+    return {
+      debtShare: debt, cashShare: cash, factoringShare: factoring,
+      debtRate, cashRate, factoringRate,
+      wacc: debt * debtRate + cash * cashRate + factoring * factoringRate,
+      budgetMult: cash * 1 + debt * 3 + factoring * 2.8,
+      riskAdd: debt * 3 + factoring * -12,
+      debtAmount: totalCapital * debt,
+      cashAmount: totalCapital * cash,
+      factoringAmount: totalCapital * factoring,
+    };
+  }
+  // Recommended cash / debt / factoring shares (fractions summing to 1).
+  // Factoring is favored because it transfers receivables default risk and is now cheap.
+  function recommendShares(company, market, totalCapital) {
+    const rate = INTEREST_RATE[company.creditRating] + (market.interestSurcharge || 0);
+    const cashMax = totalCapital > 0 ? (company.cash * 0.5) / totalCapital : 0;
+    const cash = Math.min(0.30, cashMax);
+    // Grow factoring with default risk (recession) — it removes receivables risk.
+    const factoring = clamp(0.15 + market.recessionRisk / 200, 0.15, 0.45);
+    const debt = clamp(1 - cash - factoring, 0, 1);
+    // If borrowing is expensive, shift debt into factoring instead.
+    const expensive = rate > FACTORING_FEE_RATE;
+    const d = expensive ? Math.min(debt, 0.30) : debt;
+    return { cash, debt: d, factoring: clamp(1 - cash - d, 0, 1) };
+  }
+  // Convert a { cash, debt, factoring } percentage object (0–100 each) to fractions.
+  function sharesFromPct(pct) {
+    return {
+      cash: clamp(pct.cash != null ? pct.cash : 0, 0, 100) / 100,
+      debt: clamp(pct.debt != null ? pct.debt : 0, 0, 100) / 100,
+      factoring: clamp(pct.factoring != null ? pct.factoring : 0, 0, 100) / 100,
+    };
+  }
+  // Round a fraction triplet into integer percentages that sum to exactly 100.
+  function pctTriplet(cash, debt, factoring) {
+    const v = [cash, debt, factoring].map((x) => Math.round(x * 100));
+    const diff = 100 - (v[0] + v[1] + v[2]);
+    if (diff !== 0) {
+      const idx = v.indexOf(Math.max(v[0], v[1], v[2]));
+      v[idx] += diff;
+    }
+    return { cash: v[0], debt: v[1], factoring: v[2] };
+  }
 
   /* ---------- RNG ---------- */
   function mulberry32(seed) {
@@ -55,40 +136,40 @@
 
   /* ---------- Events ---------- */
   const EVENTS = [
-    { id: 'recession', cat: 'Economic', name: 'Recession', desc: 'The economy contracts; demand drops and recession risk spikes.', impact: 'negative', effects: { demand: -20, recession: 25 } },
-    { id: 'inflation-shock', cat: 'Economic', name: 'Inflation shock', desc: 'Input prices surge, raising your cost of goods sold.', impact: 'negative', effects: { costPressure: 0.05, demand: -5 } },
-    { id: 'rate-hike', cat: 'Economic', name: 'Interest-rate hike', desc: 'The central bank raises rates, increasing your borrowing costs.', impact: 'negative', effects: { interestSurcharge: 0.004, demand: -5 } },
-    { id: 'banking-crisis', cat: 'Economic', name: 'Banking crisis', desc: 'Credit markets seize up; default risk and currency stress rise.', impact: 'negative', effects: { recession: 20, usdChange: 0.03 } },
-    { id: 'trade-war', cat: 'Geopolitical', name: 'Trade war', desc: 'Tit-for-tat tariffs hit your markets and soften demand.', impact: 'negative', effects: { tariff: 0.08, demand: -10 } },
-    { id: 'sanctions', cat: 'Geopolitical', name: 'Sanctions', desc: 'New sanctions disrupt trade routes and raise tariffs.', impact: 'negative', effects: { tariff: 0.05, shipping: 0.15 } },
-    { id: 'tariff-increase', cat: 'Geopolitical', name: 'Tariff increases', desc: 'Import tariffs are raised across the board.', impact: 'negative', effects: { tariff: 0.06 } },
-    { id: 'trade-agreement', cat: 'Geopolitical', name: 'New trade agreement', desc: 'A new pact lowers tariffs and lifts demand.', impact: 'positive', effects: { tariff: -0.05, demand: 8 } },
-    { id: 'cyberattack', cat: 'Operational', name: 'Cyberattack', desc: 'A cyberattack disrupts operations, adding costs and slowing sales.', impact: 'negative', effects: { costPressure: 0.03, demand: -5 } },
-    { id: 'supplier-bankruptcy', cat: 'Operational', name: 'Supplier bankruptcy', desc: 'A key supplier goes under, tightening supply and raising freight costs.', impact: 'negative', effects: { shipping: 0.2, demand: -5 } },
-    { id: 'port-closure', cat: 'Operational', name: 'Port closure', desc: 'A major port shuts down, sending shipping costs soaring.', impact: 'negative', effects: { shipping: 0.3, demand: -8 } },
-    { id: 'labor-strike', cat: 'Operational', name: 'Labor strike', desc: 'Dock workers strike, slowing shipments and raising costs.', impact: 'negative', effects: { shipping: 0.15, costPressure: 0.02 } },
+    { id: 'recession', cat: 'Economic', name: 'Recession', desc: 'The economy contracts sharply; demand drops and recession risk spikes.', impact: 'negative', effects: { demand: -32, recession: 40 } },
+    { id: 'inflation-shock', cat: 'Economic', name: 'Inflation shock', desc: 'Input prices surge, raising your cost of goods sold.', impact: 'negative', effects: { costPressure: 0.09, demand: -10 } },
+    { id: 'rate-hike', cat: 'Economic', name: 'Interest-rate hike', desc: 'The central bank raises rates, increasing your borrowing costs.', impact: 'negative', effects: { interestSurcharge: 0.008, demand: -10 } },
+    { id: 'banking-crisis', cat: 'Economic', name: 'Banking crisis', desc: 'Credit markets seize up; default risk and currency stress spike.', impact: 'negative', effects: { recession: 35, usdChange: 0.06 } },
+    { id: 'trade-war', cat: 'Geopolitical', name: 'Trade war', desc: 'Tit-for-tat tariffs hit your markets and soften demand.', impact: 'negative', effects: { tariff: 0.14, demand: -16 } },
+    { id: 'sanctions', cat: 'Geopolitical', name: 'Sanctions', desc: 'New sanctions disrupt trade routes and raise tariffs.', impact: 'negative', effects: { tariff: 0.09, shipping: 0.25 } },
+    { id: 'tariff-increase', cat: 'Geopolitical', name: 'Tariff increases', desc: 'Import tariffs are raised across the board.', impact: 'negative', effects: { tariff: 0.11 } },
+    { id: 'trade-agreement', cat: 'Geopolitical', name: 'New trade agreement', desc: 'A new pact lowers tariffs and lifts demand.', impact: 'positive', effects: { tariff: -0.09, demand: 14 } },
+    { id: 'cyberattack', cat: 'Operational', name: 'Cyberattack', desc: 'A cyberattack disrupts operations, adding costs and slowing sales.', impact: 'negative', effects: { costPressure: 0.05, demand: -10 } },
+    { id: 'supplier-bankruptcy', cat: 'Operational', name: 'Supplier bankruptcy', desc: 'A key supplier goes under, tightening supply and raising freight costs.', impact: 'negative', effects: { shipping: 0.32, demand: -10 } },
+    { id: 'port-closure', cat: 'Operational', name: 'Port closure', desc: 'A major port shuts down, sending shipping costs soaring.', impact: 'negative', effects: { shipping: 0.5, demand: -14 } },
+    { id: 'labor-strike', cat: 'Operational', name: 'Labor strike', desc: 'Dock workers strike, slowing shipments and raising costs.', impact: 'negative', effects: { shipping: 0.25, costPressure: 0.04 } },
   ];
 
   /* ---------- Market ---------- */
   function generateMarket(rng, prev) {
     if (!prev) {
       return {
-        usdChange: rng.float(-0.03, 0.03),
-        shippingMultiplier: clamp(1 + rng.float(-0.15, 0.15), 0.7, 1.3),
-        tariffRate: rng.chance(0.2) ? rng.float(0.05, 0.12) : 0,
-        demandIndex: rng.int(60, 80),
-        recessionRisk: rng.int(10, 30),
+        usdChange: rng.float(-0.06, 0.06),
+        shippingMultiplier: clamp(1 + rng.float(-0.25, 0.25), 0.6, 1.5),
+        tariffRate: rng.chance(0.35) ? rng.float(0.05, 0.15) : 0,
+        demandIndex: rng.int(45, 95),
+        recessionRisk: rng.int(5, 55),
         interestSurcharge: 0,
         costPressure: 0,
       };
     }
-    const usdChange = clamp(prev.usdChange * 0.35 + rng.float(-0.06, 0.06), -0.12, 0.12);
-    const shippingMultiplier = clamp(1 + (prev.shippingMultiplier - 1) * 0.5 + rng.float(-0.18, 0.18), 0.6, 1.6);
+    const usdChange = clamp(prev.usdChange * 0.2 + rng.float(-0.10, 0.10), -0.20, 0.20);
+    const shippingMultiplier = clamp(1 + (prev.shippingMultiplier - 1) * 0.35 + rng.float(-0.28, 0.28), 0.5, 1.9);
     let tariffRate = prev.tariffRate;
-    if (rng.chance(0.18)) tariffRate = clamp(tariffRate + rng.float(0.03, 0.08), 0, 0.35);
-    else tariffRate = clamp(tariffRate - rng.float(0, 0.02), 0, 0.35);
-    const demandIndex = clamp(prev.demandIndex + rng.float(-14, 14), 30, 96);
-    const recessionRisk = clamp(prev.recessionRisk + rng.float(-12, 12), 0, 100);
+    if (rng.chance(0.3)) tariffRate = clamp(tariffRate + rng.float(0.05, 0.14), 0, 0.5);
+    else if (rng.chance(0.3)) tariffRate = clamp(tariffRate - rng.float(0.02, 0.08), 0, 0.5);
+    const demandIndex = clamp(prev.demandIndex + rng.float(-26, 26), 10, 100);
+    const recessionRisk = clamp(prev.recessionRisk + rng.float(-25, 25), 0, 100);
     return { usdChange, shippingMultiplier, tariffRate, demandIndex, recessionRisk, interestSurcharge: 0, costPressure: 0 };
   }
 
@@ -130,100 +211,363 @@
     market.recessionRisk = clamp(market.recessionRisk, 0, 100);
   }
 
-  /* ---------- Advisors ---------- */
-  function generateAdvisorBoard(market) {
-    const insights = [];
-    const usdPct = market.usdChange * 100;
-    insights.push({ advisor: 'Treasury', message: Math.abs(market.usdChange) > 0.04
-      ? `USD moved ${usdPct >= 0 ? '+' : ''}${usdPct.toFixed(1)}% this month — your FX exposure is elevated.`
-      : `USD is steady (${usdPct >= 0 ? '+' : ''}${usdPct.toFixed(1)}%) — FX risk is low this month.` });
-    const recession = Math.round(market.recessionRisk);
-    insights.push({ advisor: 'Risk Manager', message: market.recessionRisk > 60
-      ? `Credit climate is deteriorating (recession risk ${recession}/100).`
-      : `Credit climate is stable (recession risk ${recession}/100).` });
-    const shipHigh = market.shippingMultiplier > 1.2, tariffHigh = market.tariffRate > 0.1;
-    if (shipHigh || tariffHigh) {
-      insights.push({ advisor: 'Market Analyst', message: `Supply chain is tight (shipping ${market.shippingMultiplier.toFixed(1)}×${tariffHigh ? ', tariffs ' + Math.round(market.tariffRate * 100) + '%' : ''}).` });
-    } else if (market.demandIndex > 75) {
-      insights.push({ advisor: 'Market Analyst', message: 'Supply chain is smooth and demand is strong.' });
-    } else {
-      insights.push({ advisor: 'Market Analyst', message: 'Supply chain is stable; demand is moderate.' });
-    }
-    return insights;
+  /* ---------- Opportunities (portfolio) ---------- */
+  function makeOpp(id, type, title, description, expectedPnL, capital, creditRisk, fxExposure, extra) {
+    return Object.assign({ id, type, title, description, expectedPnL, capital, creditRisk, fxExposure, currency: 'USD' }, extra);
   }
 
-  /* ---------- Decisions ---------- */
-  function opt(id, label, desc) { return { id, label, desc }; }
-  function rec(optionId, advisor, actionLabel, reason, confidence) { return { optionId, advisor, actionLabel, reason, confidence }; }
+  function generateOpportunities(rng, company, market, month) {
+    const demand = market.demandIndex / 100;
+    const usd = market.usdChange;
+    const fxFor = (ccy) => usd * (CURRENCY_FX[ccy] || 1);
+    const opps = [];
 
-  function generateDecisions(rng, company, market, month) {
-    return [currencyDecision(market, month), creditDecision(rng, market, month), inventoryDecision(rng, company, market, month)];
+    // Import — buy from specific-currency suppliers.
+    const importValue = 1000000;
+    opps.push(makeOpp('import-usd-' + month, 'import', 'Import from USD supplier',
+      `Buy ${money(importValue)} of goods from your USD supplier and resell at a ${Math.round(IMPORT_MARGIN * 100)}% margin.`,
+      round1(importValue * IMPORT_MARGIN), importValue, 0, importValue,
+      { currency: 'USD', fxChange: fxFor('USD') }));
+    const importValueCny = 800000;
+    opps.push(makeOpp('import-cny-' + month, 'import', 'Import from CNY supplier',
+      `Buy ${money(importValueCny)} of goods from your CNY supplier and resell at a ${Math.round(IMPORT_MARGIN * 100)}% margin.`,
+      round1(importValueCny * IMPORT_MARGIN), importValueCny, 0, importValueCny,
+      { currency: 'CNY', fxChange: fxFor('CNY') }));
+
+    // Exports — sell to specific-currency buyers.
+    const specs = [
+      { ccy: 'USD', mult: 1.5 },
+      { ccy: 'EUR', mult: 1.2 },
+      { ccy: 'GBP', mult: 0.9 },
+      { ccy: 'AED', mult: 1.3 },
+      { ccy: 'CNY', mult: 1.1 },
+    ];
+    specs.forEach((s) => {
+      const value = round1(s.mult * 1000000 * (0.8 + demand * 0.3));
+      const risk = clamp(0.04 + market.recessionRisk * 0.001, 0.02, 0.2);
+      const pnl = round1(value * (EXPORT_MARGIN * (1 - risk) - DEFAULT_LOSS_RATE * risk));
+      opps.push(makeOpp(`export-${s.ccy.toLowerCase()}-${month}`, 'export', `Export to ${s.ccy} buyer`,
+        `Sell ${money(value)} of goods to a ${s.ccy}-paying buyer.`,
+        pnl, value, round1(risk), value, { currency: s.ccy, fxChange: fxFor(s.ccy) }));
+    });
+
+    return opps;
   }
-  function currencyDecision(market, month) {
-    const volatility = Math.abs(market.usdChange);
-    let optionId, actionLabel, reason;
-    if (volatility > 0.04) { optionId = 'hedge100'; actionLabel = 'Hedge 100% of USD exposure'; reason = 'Currency volatility is elevated — full protection is prudent.'; }
-    else if (volatility > 0.02) { optionId = 'hedge50'; actionLabel = 'Hedge 50% of USD exposure'; reason = 'Currency volatility is increasing — partial hedging balances cost and risk.'; }
-    else { optionId = 'none'; actionLabel = 'Leave exposure unhedged'; reason = 'Volatility is low — hedging costs may exceed the expected benefit.'; }
+
+  /* ---------- Agent A : Working Capital Management (Principle 2) ---------- */
+  function agentAFlag(company, opp, posture) {
+    const cap = opp.capital || 0;
+    if (cap > company.cash) return 'REJECTED';
+    if (cap > company.cash * posture.limit) return 'LIMITED';
+    const risk = opp.creditRisk + (posture.creditEase || 0);
+    if (risk > HIGH_DEFAULT_RISK) return 'LIMITED';
+    return 'APPROVED';
+  }
+  function agentAScore(company, opp, posture) {
+    const cap = opp.capital || 0;
+    let score = cap > 0 ? clamp(Math.round(100 - (cap / Math.max(company.cash, 1)) * 100), 0, 100) : 100;
+    const risk = opp.creditRisk + (posture.creditEase || 0);
+    if (risk > 0.2) score = clamp(score - 12, 0, 100);
+    return score;
+  }
+
+  function econProfit(opp, fxPenalty, wacc) {
+    const cap = opp.capital || 0;
+    return opp.expectedPnL - cap * wacc - fxPenalty;
+  }
+
+  /* Evaluate every opportunity under a given posture + weighted cost of capital. */
+  function evaluateAll(company, market, opps, posture, wacc) {
+    opps.forEach((o) => {
+      const expo = o.fxExposure || 0;
+      const fxPenalty = expo * Math.abs(o.fxChange || 0) * FX_RISK_FACTOR;
+      o.eval = {
+        flagA: agentAFlag(company, o, posture),
+        scoreA: agentAScore(company, o, posture),
+        fxPenalty,
+        economicProfit: econProfit(o, fxPenalty, wacc),
+      };
+    });
+  }
+
+  /* Select the capital-efficient mix that maximizes economic profit within budget. */
+  function selectPortfolio(company, opps, posture, budgetMult) {
+    const budget = company.cash * (1 - posture.floor) * budgetMult;
+    const included = new Set();
+    const eligible = opps
+      .filter((o) => o.eval.flagA !== 'REJECTED' && o.eval.economicProfit > 0)
+      .slice()
+      .sort((a, b) => b.eval.economicProfit - a.eval.economicProfit);
+    let used = 0;
+    eligible.forEach((o) => {
+      if (used + (o.capital || 0) <= budget) { included.add(o.id); used += o.capital || 0; }
+    });
+    return { included, budget, funded: used };
+  }
+
+  /* ---------- Three-agent trade strategy model ---------- */
+  const EXPORT_PRICE_OPTIONS = [
+    { id: 'px-3', label: 'Discount −3%', priceAdj: -0.03 },
+    { id: 'px0', label: 'Hold price', priceAdj: 0 },
+    { id: 'px3', label: 'Raise +3%', priceAdj: 0.03 },
+    { id: 'px5', label: 'Raise +5%', priceAdj: 0.05 },
+  ];
+  const FOCUS_BOOST = 0.12;   // margin uplift for the focused export market
+  const EXPORT_MARKET_OPTIONS = [
+    { id: 'mk-bal', label: 'Balanced', demandShift: 0, marketRisk: 0, focus: null },
+    { id: 'mk-us', label: 'Focus USA', demandShift: 2, marketRisk: 3, focus: 'USD' },
+    { id: 'mk-eu', label: 'Focus Europe', demandShift: 2, marketRisk: 3, focus: 'EUR' },
+    { id: 'mk-uk', label: 'Focus UK', demandShift: 2, marketRisk: 3, focus: 'GBP' },
+    { id: 'mk-me', label: 'Focus Middle East', demandShift: 2, marketRisk: 3, focus: 'AED' },
+    { id: 'mk-cn', label: 'Focus China', demandShift: 2, marketRisk: 3, focus: 'CNY' },
+  ];
+  const EXPORT_COLLECTION_OPTIONS = [
+    { id: 'cl-fast', label: 'Fast · 45d', exportRiskAdj: -0.03 },
+    { id: 'cl-std', label: 'Standard · 60d', exportRiskAdj: 0 },
+    { id: 'cl-ext', label: 'Extended · 90d', exportRiskAdj: 0.05 },
+  ];
+  const IMPORT_SOURCING_OPTIONS = [
+    { id: 'so-cn', label: 'China · low cost', cogsAdj: -0.02, supplyRisk: 8 },
+    { id: 'so-bd', label: 'Bangladesh · lowest cost', cogsAdj: -0.03, supplyRisk: 12 },
+    { id: 'so-vn', label: 'Vietnam · balanced', cogsAdj: 0, supplyRisk: 0 },
+    { id: 'so-tr', label: 'Turkey · near market', cogsAdj: 0.01, supplyRisk: -3 },
+    { id: 'so-mx', label: 'Mexico · nearshore', cogsAdj: 0.02, supplyRisk: -5 },
+    { id: 'so-div', label: 'Diversified', cogsAdj: 0.03, supplyRisk: -8 },
+  ];
+  const IMPORT_TERMS_OPTIONS = [
+    { id: 'tm-30', label: '30 days', cogsAdj: 0, dpoBenefit: 0 },
+    { id: 'tm-60', label: '60 days', cogsAdj: 0.008, dpoBenefit: 40000 },
+  ];
+  const IMPORT_ORDER_OPTIONS = [
+    { id: 'or-std', label: 'Standard', cogsAdj: 0, carryAdj: 0 },
+    { id: 'or-plus', label: '+20% size', cogsAdj: -0.015, carryAdj: 0.002 },
+  ];
+
+  function pick(list, id) { return list.find((o) => o.id === id) || list[0]; }
+
+  function resolveActions(selections) {
+    const ex = (selections && selections.export) || {};
+    const im = (selections && selections.import) || {};
+    const px = pick(EXPORT_PRICE_OPTIONS, ex.price);
+    const mk = pick(EXPORT_MARKET_OPTIONS, ex.market);
+    const cl = pick(EXPORT_COLLECTION_OPTIONS, ex.collection);
+    const so = pick(IMPORT_SOURCING_OPTIONS, im.sourcing);
+    const tm = pick(IMPORT_TERMS_OPTIONS, im.terms);
+    const or = pick(IMPORT_ORDER_OPTIONS, im.order);
     return {
-      id: 'currency-' + month, type: 'currency', title: 'Currency Risk — upcoming USD purchase',
-      description: 'You expect to purchase goods worth $1.0 million from a USD supplier next quarter.',
-      options: [
-        opt('none', 'No hedge', 'Leave the full $1.0M exposure open to currency swings.'),
-        opt('hedge50', 'Hedge 50%', 'Lock in half the exposure; pay a small hedging fee.'),
-        opt('hedge100', 'Hedge 100%', 'Fully lock the rate; pay a fee but eliminate FX risk.'),
-      ],
-      insights: [
-        { advisor: 'Treasury', message: 'USD exposure on your import pipeline is running high this month.' },
-        { advisor: 'Market Analyst', message: volatility > 0.03 ? 'FX markets look volatile; sharp moves are likely.' : 'FX markets look relatively calm.' },
-      ],
-      recommendation: rec(optionId, 'Treasury', actionLabel, reason, Math.min(90, Math.round(55 + volatility * 800))),
+      priceAdj: px.priceAdj || 0,
+      marketShift: mk.demandShift || 0,
+      marketRisk: mk.marketRisk || 0,
+      focusCcy: mk.focus || null,
+      exportRiskAdj: cl.exportRiskAdj || 0,
+      cogsAdj: (so.cogsAdj || 0) + (tm.cogsAdj || 0) + (or.cogsAdj || 0),
+      supplyRisk: so.supplyRisk || 0,
+      carryAdj: or.carryAdj || 0,
+      dpoBenefit: tm.dpoBenefit || 0,
+      liquidityRisk: 0,
+      fxFinancingRisk: 0,
+      rateAdj: 0,
     };
   }
-  function creditDecision(rng, market, month) {
-    const baseRisk = 0.1 + market.recessionRisk * 0.002;
-    const customerRisk = Math.min(0.45, baseRisk + rng.float(-0.05, 0.15));
-    const riskLabel = customerRisk > 0.3 ? 'high' : customerRisk > 0.18 ? 'medium' : 'low';
-    let optionId, actionLabel, reason;
-    if (riskLabel === 'high') { optionId = 'lc'; actionLabel = 'Accept with Letter of Credit'; reason = 'Elevated default risk — a Letter of Credit protects the receivable.'; }
-    else if (riskLabel === 'medium') { optionId = 'prepay'; actionLabel = 'Require 50% prepayment'; reason = 'Moderate risk — a prepayment reduces exposure while keeping the sale.'; }
-    else { optionId = 'accept'; actionLabel = 'Accept on open credit'; reason = 'Low default risk — open credit is the most competitive offer.'; }
+
+  function bestMarket(market) {
+    const map = { USD: 'mk-us', EUR: 'mk-eu', GBP: 'mk-uk', AED: 'mk-me', CNY: 'mk-cn' };
+    let best = 'mk-bal', bestFx = 0.02;
+    Object.keys(map).forEach((ccy) => {
+      const fx = (market.usdChange || 0) * (CURRENCY_FX[ccy] || 1);
+      if (fx > bestFx) { bestFx = fx; best = map[ccy]; }
+    });
+    return best;
+  }
+
+  function defaultSelections(company, market, totalCapital) {
+    const rs = recommendShares(company, market, totalCapital);
+    const shares = pctTriplet(rs.cash, rs.debt, rs.factoring);
+    const demand = market.demandIndex, recession = market.recessionRisk;
+    const supplyStress = market.shippingMultiplier > 1.3 || market.tariffRate > 0.1;
     return {
-      id: 'credit-' + month, type: 'credit', title: 'Customer Credit — new order',
-      description: 'A new customer wants to buy $2.0 million of products.',
-      options: [
-        opt('accept', 'Accept (open credit)', 'Extend normal payment terms; strongest offer but exposed to default.'),
-        opt('lc', 'Accept with Letter of Credit', 'Bank guarantees payment; pay a small fee.'),
-        opt('prepay', 'Require 50% prepayment', 'Customer pays half up front; may walk away from the deal.'),
-        opt('reject', 'Reject', 'Decline the order and take no credit risk.'),
-      ],
-      insights: [
-        { advisor: 'Risk Manager', message: riskLabel === 'high' ? 'This customer has elevated default risk.' : riskLabel === 'medium' ? 'This customer has moderate credit risk.' : 'This customer looks creditworthy.' },
-        { advisor: 'Market Analyst', message: market.demandIndex > 70 ? 'Demand is firm — a big order would help revenue.' : 'Demand is soft — weigh the size of this order carefully.' },
-      ],
-      recommendation: rec(optionId, 'Risk Manager', actionLabel, reason, Math.min(90, Math.round(60 + (customerRisk - 0.15) * 120))),
-      hidden: { customerRisk },
+      export: {
+        price: demand > 70 && recession < 40 ? 'px3' : (demand < 45 ? 'px-3' : 'px0'),
+        market: bestMarket(market),
+        collection: recession > 50 ? 'cl-fast' : 'cl-std',
+      },
+      import: {
+        sourcing: supplyStress ? 'so-div' : 'so-vn',
+        terms: company.cash < company.monthlyRevenue * 2 ? 'tm-60' : 'tm-30',
+        order: demand > 60 ? 'or-plus' : 'or-std',
+      },
+      finance: {
+        A: { cash: shares.cash, debt: shares.debt, factoring: shares.factoring },
+      },
     };
   }
-  function inventoryDecision(rng, company, market, month) {
-    const shippingLow = market.shippingMultiplier < 0.85, demandHigh = market.demandIndex > 75;
-    let optionId, actionLabel, reason;
-    if (shippingLow && demandHigh) { optionId = 'increase'; actionLabel = 'Increase inventory'; reason = 'Cheap shipping and strong demand favor building inventory.'; }
-    else if (!shippingLow && !demandHigh) { optionId = 'reduce'; actionLabel = 'Reduce inventory'; reason = 'High shipping and weak demand make holding inventory costly.'; }
-    else { optionId = 'keep'; actionLabel = 'Keep inventory stable'; reason = 'Mixed signals — keep inventory stable.'; }
+
+  function aggressiveSelections() {
     return {
-      id: 'inventory-' + month, type: 'inventory', title: 'Inventory — stock level',
-      description: `You hold $${(company.inventory / 1000000).toFixed(1)}M of inventory. Shipping costs are ${shippingLow ? 'low' : 'high'}.`,
-      options: [
-        opt('increase', 'Increase inventory', 'Buy $1.0M more stock.'),
-        opt('keep', 'Keep inventory stable', 'Leave stock levels unchanged.'),
-        opt('reduce', 'Reduce inventory', 'Sell down $1.0M of stock.'),
-      ],
-      insights: [
-        { advisor: 'Treasury', message: shippingLow ? 'Shipping costs are low — a good time to stock up.' : 'Shipping costs are elevated — buying now is expensive.' },
-        { advisor: 'Market Analyst', message: demandHigh ? 'Demand looks strong — low stock risks lost sales.' : 'Demand is muted — excess inventory adds carrying cost.' },
-      ],
-      recommendation: rec(optionId, 'Market Analyst', actionLabel, reason, Math.round(58 + rng.float(0, 20))),
+      export: { price: 'px5', market: 'mk-cn', collection: 'cl-ext' },
+      import: { sourcing: 'so-bd', terms: 'tm-60', order: 'or-plus' },
+      finance: { A: { cash: 10, debt: 80, factoring: 10 } },
+    };
+  }
+
+  function conservativeSelections() {
+    return {
+      export: { price: 'px-3', market: 'mk-bal', collection: 'cl-fast' },
+      import: { sourcing: 'so-div', terms: 'tm-30', order: 'or-std' },
+      finance: { A: { cash: 60, debt: 20, factoring: 20 } },
+    };
+  }
+
+  function projectMonth(company, market, opps, selections) {
+    const totalCapital = opps.reduce((s, o) => s + (o.capital || 0), 0);
+    const shares = sharesFromPct(selections.finance.A);
+    const plan = financingPlan(company, market, totalCapital, shares);
+    const posture = WC_POSTURES.balanced;
+    evaluateAll(company, market, opps, posture, plan.wacc);
+    const included = selectPortfolio(company, opps, posture, plan.budgetMult).included;
+    const funded = [...included].reduce((s, id) => s + (opps.find((o) => o.id === id)?.capital || 0), 0);
+    const mods = resolveActions(selections);
+
+    let decisionProfit = 0, fxImpact = 0;
+    opps.forEach((o) => {
+      if (!included.has(o.id)) return;
+      const fx = (o.fxExposure || 0) * (o.fxChange || 0);
+      if (o.type === 'import') {
+        decisionProfit += o.capital * IMPORT_MARGIN;
+        fxImpact -= fx;
+      } else {
+        const margin = o.capital * EXPORT_MARGIN * (1 + mods.priceAdj) * (mods.focusCcy && o.currency === mods.focusCcy ? 1 + FOCUS_BOOST : 1);
+        const risk = clamp(o.creditRisk + (posture.creditEase || 0) + mods.exportRiskAdj, 0, 0.9) * (1 - plan.factoringShare);
+        decisionProfit += margin - o.capital * DEFAULT_LOSS_RATE * risk;
+        fxImpact += fx;
+      }
+    });
+
+    const adjDemand = clamp(market.demandIndex + (posture.demandShift || 0) + mods.marketShift, 0, 100);
+    const demandMultiplier = 0.8 + (adjDemand / 100) * 0.4;
+    const revenue = company.monthlyRevenue * demandMultiplier;
+    const cogs = revenue * (COGS_RATIO + market.costPressure + mods.cogsAdj);
+    const salaries = company.employees * SALARY_PER_EMPLOYEE;
+    const overhead = FIXED_OVERHEAD;
+    const shipping = BASE_SHIPPING * market.shippingMultiplier;
+    const debtForInterest = company.debt + funded * plan.debtShare;
+    const interest = debtForInterest * (INTEREST_RATE[company.creditRating] + market.interestSurcharge + mods.rateAdj);
+    const carrying = company.inventory * (INVENTORY_CARRY_RATE + mods.carryAdj);
+    const tariff = cogs * market.tariffRate;
+    const operatingProfit = revenue - cogs - salaries - overhead - shipping - interest - carrying - tariff;
+    const profit = operatingProfit + fxImpact + decisionProfit + mods.dpoBenefit;
+
+    const assets = company.cash + company.inventory;
+    const leverage = company.debt / Math.max(assets, 1);
+    let risk = 25 + clamp(leverage, 0, 1) * 45;
+    risk += plan.riskAdd;
+    risk += market.recessionRisk * 0.15;
+    risk += mods.marketRisk + mods.supplyRisk + mods.liquidityRisk + mods.fxFinancingRisk;
+    risk = clamp(Math.round(risk), 0, 100);
+
+    return { profit: Math.round(profit), risk };
+  }
+
+  function buildScenarios(company, market, opps, current) {
+    const totalCapital = opps.reduce((s, o) => s + (o.capital || 0), 0);
+    const defs = [
+      { id: 'current', label: 'Current', sel: current },
+      { id: 'rec', label: 'Recommended', sel: defaultSelections(company, market, totalCapital) },
+      { id: 'aggr', label: 'Aggressive', sel: aggressiveSelections() },
+      { id: 'safe', label: 'Conservative', sel: conservativeSelections() },
+    ];
+    return defs.map((d) => {
+      const p = projectMonth(company, market, opps, d.sel);
+      return { id: d.id, label: d.label, profit: p.profit, risk: p.risk, selections: d.sel };
+    });
+  }
+
+  function buildDecision(state, selections) {
+    const company = state.company, market = state.market, opps = state.opportunities;
+    const totalCapital = opps.reduce((s, o) => s + (o.capital || 0), 0);
+    const sel = selections || defaultSelections(company, market, totalCapital);
+    const rec = defaultSelections(company, market, totalCapital);
+
+    const plan = financingPlan(company, market, totalCapital, sharesFromPct(sel.finance.A));
+    const posture = WC_POSTURES.balanced;
+    evaluateAll(company, market, opps, posture, plan.wacc);
+    const trades = [...selectPortfolio(company, opps, posture, plan.budgetMult).included];
+
+    // Keep the capital/trade pages in sync with the current financing mix.
+    state.agentActions = generateAgentActions(company, market, opps, { A: sel.finance.A });
+
+    const agents = {
+      export: {
+        name: 'Export Optimization', objective: 'Maximize export revenue × gross margin', metric: 'Incremental profit',
+        inputs: ['Sales by market', 'Product margins', 'DSO', 'Market growth', 'Currency strength'],
+        actions: [
+          { key: 'market', label: 'Market reallocation', options: EXPORT_MARKET_OPTIONS, selectedId: sel.export.market, recommendedId: rec.export.market },
+          { key: 'price', label: 'Price adjustment', options: EXPORT_PRICE_OPTIONS, selectedId: sel.export.price, recommendedId: rec.export.price },
+          { key: 'collection', label: 'Collection (DSO)', options: EXPORT_COLLECTION_OPTIONS, selectedId: sel.export.collection, recommendedId: rec.export.collection },
+        ],
+      },
+      import: {
+        name: 'Import Optimization', objective: 'Minimize landed cost + supply risk', metric: 'Cost savings − supply risk',
+        inputs: ['Supplier prices', 'Freight costs', 'Duties / tariffs', 'Payment terms', 'Country risk'],
+        actions: [
+          { key: 'sourcing', label: 'Shift sourcing', options: IMPORT_SOURCING_OPTIONS, selectedId: sel.import.sourcing, recommendedId: rec.import.sourcing },
+          { key: 'order', label: 'Consolidate orders', options: IMPORT_ORDER_OPTIONS, selectedId: sel.import.order, recommendedId: rec.import.order },
+          { key: 'terms', label: 'Negotiate terms (DPO)', options: IMPORT_TERMS_OPTIONS, selectedId: sel.import.terms, recommendedId: rec.import.terms },
+        ],
+      },
+      finance: {
+        name: 'Financing & Working Capital', objective: 'Minimize financing cost + liquidity + FX risk', metric: 'Financing savings − risk penalty',
+        inputs: ['Cash balance', 'Debt balance', 'Factoring rates', 'Interest by currency'],
+        plan: {
+          cashAmount: plan.cashAmount, debtAmount: plan.debtAmount, factoringAmount: plan.factoringAmount,
+          cashRate: plan.cashRate, debtRate: plan.debtRate, factoringRate: plan.factoringRate, wacc: plan.wacc,
+        },
+        shares: { cash: sel.finance.A.cash, debt: sel.finance.A.debt, factoring: sel.finance.A.factoring },
+        actions: [],
+      },
+    };
+
+    return { agents, scenarios: buildScenarios(company, market, opps, sel), trades };
+  }
+
+  function generateAgentActions(company, market, opps, selections) {
+    const sel = selections || {};
+    const totalCapital = opps.reduce((s, o) => s + (o.capital || 0), 0);
+    const recShares = recommendShares(company, market, totalCapital);
+    const shares = sel.A != null ? sharesFromPct(sel.A) : recShares;
+    const plan = financingPlan(company, market, totalCapital, shares);
+    const posture = WC_POSTURES.balanced;
+    evaluateAll(company, market, opps, posture, plan.wacc);
+    opps.forEach((o) => { o.rec = { flagA: o.eval.flagA, scoreA: o.eval.scoreA, econ: o.eval.economicProfit }; });
+    const { included } = selectPortfolio(company, opps, posture, plan.budgetMult);
+
+    const tradeOptions = opps.map((o) => ({
+      id: o.id,
+      label: (o.type === 'import' ? 'Import' : 'Export') + ' · ' + o.currency,
+      desc: `${money(o.capital)} ${o.currency} · FX ${(o.fxChange >= 0 ? '+' : '') + (o.fxChange * 100).toFixed(1)}%`,
+      recommended: o.eval.economicProfit > 0,
+    }));
+
+    return {
+      A: {
+        key: 'A', agent: 'Capital', principle: 'Financing mix',
+        summary: `Required ${money(totalCapital)} · recommends cash ${Math.round(recShares.cash * 100)}% / debt ${Math.round(recShares.debt * 100)}% / factoring ${Math.round(recShares.factoring * 100)}%.`,
+        recommended: pctTriplet(recShares.cash, recShares.debt, recShares.factoring),
+        min: 0, max: 100,
+        plan: {
+          debtShare: Math.round(plan.debtShare * 100),
+          cashShare: Math.round(plan.cashShare * 100),
+          factoringShare: Math.round(plan.factoringShare * 100),
+          debtAmount: plan.debtAmount, cashAmount: plan.cashAmount, factoringAmount: plan.factoringAmount,
+          debtRate: plan.debtRate, cashRate: plan.cashRate, factoringRate: plan.factoringRate, wacc: plan.wacc,
+        },
+      },
+      B: {
+        key: 'B', agent: 'Trade', principle: 'Select trades',
+        summary: `${included.size}/${opps.length} trades fit the budget.`,
+        options: tradeOptions,
+        recommendedIds: tradeOptions.filter((o) => o.recommended).map((o) => o.id),
+      },
     };
   }
 
@@ -249,99 +593,76 @@
   }
 
   /* ---------- Resolution ---------- */
-  function findChoice(choices, id) {
-    const c = choices.find((x) => x.decisionId === id);
-    return c ? c.optionId : null;
-  }
-
-  function resolveMonth(rng, company, market, decisions, choices, month) {
+  function resolveMonth(rng, company, market, opportunities, selectedIds, posture, plan, month, funded, mods) {
+    mods = mods || resolveActions({});
+    const factoringShare = plan.factoringShare;
+    const debtShare = plan.debtShare;
     const outcomes = [];
-    let fxImpact = 0, decisionProfit = 0, inventoryCashFlow = 0, stockoutLoss = 0, wasteCost = 0;
-    const cashBefore = company.cash, debtBefore = company.debt;
+    let fxImpact = 0, decisionProfit = 0, stockoutLoss = 0, wasteCost = 0;
     const next = { ...company, markets: [...company.markets], suppliers: [...company.suppliers] };
+    const selected = new Set(selectedIds);
+    const creditEase = posture.creditEase || 0;
 
-    const currency = decisions.find((d) => d.type === 'currency');
-    if (currency) {
-      const choice = findChoice(choices, currency.id);
-      const exposure = FX_EXPOSURE, usd = market.usdChange;
-      let hedgeRatio = 0;
-      if (choice === 'hedge50') hedgeRatio = 0.5;
-      if (choice === 'hedge100') hedgeRatio = 1;
-      const fee = exposure * hedgeRatio * 0.005;
-      fxImpact = -exposure * usd * (1 - hedgeRatio) - fee;
-      const pct = Math.abs(usd) * 100;
-      if (hedgeRatio === 0) {
-        if (usd > 0) outcomes.push({ title: 'FX loss on unhedged exposure', detail: `You did not hedge your USD exposure. The USD appreciated by ${pct.toFixed(1)}%. The company lost ${money(exposure * usd)}. A partial hedge would have reduced the loss.`, good: false });
-        else if (usd < 0) outcomes.push({ title: 'FX gain on unhedged exposure', detail: `You left exposure unhedged and the USD depreciated by ${pct.toFixed(1)}%. You gained ${money(exposure * Math.abs(usd))}, but unhedged positions are risky when volatility is high.`, good: true });
-        else outcomes.push({ title: 'Flat FX', detail: 'The USD was flat, so your unhedged exposure caused no gain or loss this month.', good: true });
-      } else {
-        outcomes.push({ title: `Hedged ${hedgeRatio * 100}% of exposure`, detail: `You hedged ${hedgeRatio * 100}% of your USD exposure at a cost of ${money(fee)}. The USD moved ${usd > 0 ? 'up' : 'down'} ${pct.toFixed(1)}%. Your net FX impact was ${money(fxImpact)}.`, good: true });
-      }
-    }
+    opportunities.forEach((o) => {
+      if (!selected.has(o.id)) return;
+      const fxChange = o.fxChange || 0;
 
-    const credit = decisions.find((d) => d.type === 'credit');
-    if (credit) {
-      const choice = findChoice(choices, credit.id);
-      const amount = CREDIT_ORDER, risk = credit.hidden.customerRisk;
-      const margin = amount * CREDIT_MARGIN;
-      if (choice === 'accept') {
+      if (o.type === 'import') {
+        const margin = o.capital * IMPORT_MARGIN;
+        const fx = -o.fxExposure * fxChange;
+        fxImpact += fx;
+        decisionProfit += margin;
+        outcomes.push({ title: 'Import resold', detail: `You bought ${money(o.capital)} of ${o.currency} goods and resold them for a ${money(margin)} margin. FX impact ${money(fx)} on a ${(fxChange * 100).toFixed(1)}% ${o.currency} move.`, good: true });
+      } else if (o.type === 'export') {
+        const margin = o.capital * EXPORT_MARGIN * (1 + mods.priceAdj) * (mods.focusCcy && o.currency === mods.focusCcy ? 1 + FOCUS_BOOST : 1);
+        const risk = clamp(o.creditRisk + creditEase + mods.exportRiskAdj, 0, 0.9) * (1 - factoringShare);
         if (rng.chance(risk)) {
-          const loss = amount * 0.85;
+          const loss = o.capital * DEFAULT_LOSS_RATE;
           decisionProfit -= loss;
-          outcomes.push({ title: 'Customer defaulted', detail: `You extended open credit and the customer defaulted. You wrote off ${money(loss)} in receivables. A Letter of Credit or prepayment would have protected you.`, good: false });
+          outcomes.push({ title: 'Export buyer defaulted', detail: `Your ${o.currency} buyer defaulted on the ${money(o.capital)} export. You wrote off ${money(loss)}.`, good: false });
         } else {
+          const fx = o.fxExposure * fxChange;
+          fxImpact += fx;
           decisionProfit += margin;
-          outcomes.push({ title: 'Order paid in full', detail: `The customer paid. You earned a ${money(margin)} margin on the order. Open credit maximizes sales but carries default risk.`, good: true });
+          outcomes.push({ title: 'Export shipped and settled', detail: `You shipped ${money(o.capital)} to the ${o.currency} buyer and earned ${money(margin)}. FX impact ${money(fx)} (${(fxChange * 100).toFixed(1)}% ${o.currency} move).`, good: true });
         }
-      } else if (choice === 'lc') {
-        const fee = amount * 0.01, net = margin - fee;
-        decisionProfit += net;
-        outcomes.push({ title: 'Order secured via Letter of Credit', detail: `The Letter of Credit guaranteed payment. You earned ${money(net)} after the ${money(fee)} bank fee.`, good: true });
-      } else if (choice === 'prepay') {
-        if (rng.chance(0.25)) outcomes.push({ title: 'Customer cancelled the order', detail: 'The customer refused your 50% prepayment requirement and walked away. You avoided default risk but lost the sale.', good: false });
-        else { decisionProfit += margin; outcomes.push({ title: 'Customer accepted prepayment', detail: `The customer paid 50% up front and completed the order. You earned ${money(margin)} with reduced credit exposure.`, good: true }); }
-      } else {
-        outcomes.push({ title: 'Order rejected', detail: 'You declined the order and took no credit risk, but also earned nothing this month.', good: false });
       }
-    }
+    });
 
-    const inventory = decisions.find((d) => d.type === 'inventory');
-    if (inventory) {
-      const choice = findChoice(choices, inventory.id), step = INVENTORY_STEP;
-      if (choice === 'increase') {
-        inventoryCashFlow = -step; next.inventory += step;
-        outcomes.push({ title: 'Increased inventory', detail: `You bought ${money(step)} more inventory. Carrying costs will rise, but you are positioned for higher demand.`, good: true });
-      } else if (choice === 'reduce') {
-        const sold = Math.min(step, next.inventory);
-        inventoryCashFlow = sold; next.inventory -= sold;
-        outcomes.push({ title: 'Reduced inventory', detail: `You sold down ${money(sold)} of inventory, freeing cash and lowering carrying costs.`, good: true });
-      } else {
-        outcomes.push({ title: 'Inventory kept stable', detail: 'You kept inventory unchanged this month.', good: true });
-      }
-    }
+    // Working-capital rebalancing: move inventory toward the posture's target.
+    const invTarget = next.monthlyRevenue * posture.invMult;
+    let invDelta = invTarget - next.inventory;
+    if (next.inventory + invDelta < 0) invDelta = -next.inventory;
+    next.inventory += invDelta;
+    next.cash -= invDelta;
 
-    const demandMultiplier = 0.8 + (market.demandIndex / 100) * 0.4;
+    // Financing: the debt portion is short-term working capital, repaid as deals settle.
+    const debtForInterest = next.debt + funded * debtShare;
+
+    const demandShift = (posture.demandShift || 0) + mods.marketShift;
+    const adjDemand = clamp(market.demandIndex + demandShift, 0, 100);
+    const demandMultiplier = 0.8 + (adjDemand / 100) * 0.4;
     const revenue = next.monthlyRevenue * demandMultiplier;
-    const cogs = revenue * (COGS_RATIO + market.costPressure);
+    const cogs = revenue * (COGS_RATIO + market.costPressure + mods.cogsAdj);
     const salaries = next.employees * SALARY_PER_EMPLOYEE;
     const overhead = FIXED_OVERHEAD;
     const shipping = BASE_SHIPPING * market.shippingMultiplier;
-    const interest = next.debt * (INTEREST_RATE[next.creditRating] + market.interestSurcharge);
-    const carrying = next.inventory * INVENTORY_CARRY_RATE;
+    const interest = debtForInterest * (INTEREST_RATE[next.creditRating] + market.interestSurcharge + mods.rateAdj);
+    const carrying = next.inventory * (INVENTORY_CARRY_RATE + mods.carryAdj);
     const tariff = cogs * market.tariffRate;
 
-    if (market.demandIndex > 80 && next.inventory < 1500000) {
+    if (adjDemand > 80 && next.inventory < 1500000) {
       stockoutLoss = revenue * 0.1;
       outcomes.push({ title: 'Stockout — lost sales', detail: `Demand was strong but your inventory was too low. You lost ${money(stockoutLoss)} in missed sales.`, good: false });
     }
-    if (market.demandIndex < 45 && next.inventory > 5000000) {
+    if (adjDemand < 45 && next.inventory > 5000000) {
       wasteCost = next.inventory * 0.005;
       outcomes.push({ title: 'Excess inventory costs', detail: `Demand was weak while you held excess inventory, adding ${money(wasteCost)} in extra storage and spoilage costs.`, good: false });
     }
 
     const operatingProfit = revenue - cogs - salaries - overhead - shipping - interest - carrying - tariff;
-    const profit = operatingProfit + fxImpact + decisionProfit - stockoutLoss - wasteCost;
-    const cashDelta = operatingProfit + fxImpact + decisionProfit - stockoutLoss - wasteCost + inventoryCashFlow;
+    const profit = operatingProfit + fxImpact + decisionProfit - stockoutLoss - wasteCost + mods.dpoBenefit;
+    const cashDelta = operatingProfit + fxImpact + decisionProfit - stockoutLoss - wasteCost + mods.dpoBenefit;
     next.cash += cashDelta;
     next.cumulativeProfit += profit;
     next.monthsSurvived += 1;
@@ -349,21 +670,23 @@
     const assets = next.cash + next.inventory;
     const leverage = next.debt / Math.max(assets, 1);
     let risk = 25 + clamp(leverage, 0, 1) * 45;
-    const currencyChoice = findChoice(choices, currency ? currency.id : '');
-    if (currencyChoice === 'none' && Math.abs(market.usdChange) > 0.04) risk += 15;
-    const creditChoice = findChoice(choices, credit ? credit.id : '');
-    if (creditChoice === 'accept' && credit.hidden.customerRisk > 0.2) risk += 10;
+    const unhedgedFx = opportunities.some((o) => selected.has(o.id) && (o.fxExposure || 0) > 0 && Math.abs(o.fxChange || 0) > 0.04);
+    if (unhedgedFx) risk += 15;
+    risk += plan.riskAdd;
     risk += market.recessionRisk * 0.15;
+    risk += mods.marketRisk + mods.supplyRisk + mods.liquidityRisk + mods.fxFinancingRisk;
     risk = clamp(Math.round(risk), 0, 100);
     next.riskScore = risk;
     next.creditRating = ratingFromRisk(risk);
 
-    const result = {
-      month, revenue, cogs, salaries, overhead, shipping, interest, carrying, tariff, fxImpact,
-      profit, cashBefore, cashAfter: next.cash, debtBefore, debtAfter: next.debt,
-      creditRating: next.creditRating, riskScore: next.riskScore, outcomes,
+    return {
+      company: next,
+      result: {
+        month, revenue, cogs, salaries, overhead, shipping, interest, carrying, tariff, fxImpact,
+        profit, cashBefore: company.cash, cashAfter: next.cash, debtBefore: company.debt, debtAfter: next.debt,
+        creditRating: next.creditRating, riskScore: next.riskScore, outcomes,
+      },
     };
-    return { company: next, result };
   }
 
   /* ---------- Scoring ---------- */
@@ -382,7 +705,7 @@
       survival * SCORING_WEIGHTS.survival
     );
     const ranking = score >= 85 ? 'Expert CFO' : score >= 70 ? 'Good CFO' : score >= 55 ? 'Average CFO' : 'Poor CFO';
-    const finalCompanyValue = Math.round((company.cash + company.inventory - company.debt) * company.ownership);
+    const finalCompanyValue = Math.round((company.cash + company.inventory + (company.expansion || 0) - company.debt) * company.ownership);
     return {
       score, ranking, cashGrowth: Math.round(cashGrowth), profitGrowth: Math.round(profitGrowth),
       riskManagement: Math.round(riskManagement), creditScore: Math.round(creditScore), survival: Math.round(survival),
@@ -398,7 +721,7 @@
       monthlyRevenue: STARTING.monthlyRevenue, employees: STARTING.employees,
       markets: [...STARTING.markets], suppliers: [...STARTING.suppliers], ownership: STARTING.ownership,
       creditRating: STARTING.creditRating, riskScore: STARTING.riskScore,
-      cumulativeProfit: 0, monthsSurvived: 0,
+      cumulativeProfit: 0, monthsSurvived: 0, expansion: 0,
     };
   }
   function beginMonth(state) {
@@ -407,21 +730,52 @@
     state.event = pickEvent(rng, state.event && state.event.id);
     applyEvent(state.market, state.event);
     state.news = generateNews(rng, state.market, state.month);
-    state.decisions = generateDecisions(rng, state.company, state.market, state.month);
+    state.opportunities = generateOpportunities(rng, state.company, state.market, state.month);
+    state.agentActions = generateAgentActions(state.company, state.market, state.opportunities);
   }
   function createGame(seed) {
     const state = {
-      phase: 'playing', month: 1, seed, company: freshCompany(),
+      agentMode: true, phase: 'playing', month: 1, seed, company: freshCompany(),
       market: { usdChange: 0, shippingMultiplier: 1, tariffRate: 0, demandIndex: 70, recessionRisk: 20, interestSurcharge: 0, costPressure: 0 },
-      event: null, news: [], decisions: [], history: [], lastResult: null, bankrupt: false, finalScore: null,
+      event: null, news: [], opportunities: [], agentActions: null, history: [], lastResult: null, bankrupt: false, finalScore: null,
     };
     beginMonth(state);
     return state;
   }
-  function resolveChoices(state, choices) {
+  function resolveChoices(state, selections) {
     if (state.phase !== 'playing') return;
+    const opps = state.opportunities;
+    const totalCapital = opps.reduce((s, o) => s + (o.capital || 0), 0);
+    const fin = (selections && selections.finance) || {};
+    const shares = fin.A != null ? sharesFromPct(fin.A) : recommendShares(state.company, state.market, totalCapital);
+    const plan = financingPlan(state.company, state.market, totalCapital, shares);
+    const posture = WC_POSTURES.balanced;
+    evaluateAll(state.company, state.market, opps, posture, plan.wacc);
+    // Auto-select the capital-efficient portfolio within the financing budget.
+    const included = selectPortfolio(state.company, opps, posture, plan.budgetMult).included;
+    const funded = [...included].reduce((s, id) => s + (opps.find((o) => o.id === id)?.capital || 0), 0);
+    const mods = resolveActions(selections);
     const rng = createRng(monthSeed(state.seed, state.month + 1000));
-    const { company, result } = resolveMonth(rng, state.company, state.market, state.decisions, choices, state.month);
+    const { company, result } = resolveMonth(rng, state.company, state.market, opps, [...included], posture, plan, state.month, funded, mods);
+    result.portfolio = {
+      trades: [...included].map((id) => {
+        const o = opps.find((x) => x.id === id);
+        return { type: o.type, currency: o.currency, capital: o.capital };
+      }),
+      funded,
+      shares: { cash: Math.round(plan.cashShare * 100), debt: Math.round(plan.debtShare * 100), factoring: Math.round(plan.factoringShare * 100) },
+      financing: {
+        cashAmount: funded * plan.cashShare,
+        debtAmount: funded * plan.debtShare,
+        factoringAmount: funded * plan.factoringShare,
+      },
+    };
+    result.rates = {
+      cashRate: plan.cashRate,
+      debtRate: plan.debtRate,
+      factoringRate: plan.factoringRate,
+      wacc: plan.wacc,
+    };
     state.company = company;
     state.history = [...state.history, result];
     state.lastResult = result;
@@ -440,7 +794,14 @@
   }
 
   global.CFO = {
-    TOTAL_MONTHS, STARTING, createGame, resolveChoices, generateDecisions, generateAdvisorBoard, risks, ratingFromRisk,
+    TOTAL_MONTHS, STARTING, createGame, resolveChoices, risks, ratingFromRisk,
     money, signedMoney, round1, pct: (n) => (n * 100).toFixed(1) + '%',
+    HEDGE_FEE_RATE, FX_RISK_FACTOR, INTEREST_RATE,
+    FUNDING_MODES, FACTORING_FEE_RATE, SHORT_RATE, CURRENCY_FX,
+    buildDecision: (state, selections) => buildDecision(state, selections),
+    recommend: (state, selections) => {
+      state.agentActions = generateAgentActions(state.company, state.market, state.opportunities, selections);
+      return state.agentActions;
+    },
   };
 })(window);

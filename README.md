@@ -18,9 +18,9 @@ You run a trading company over **12 months**. Every month you:
 
 1. Review your financials and key risks.
 2. Read the market news and the monthly **event** (recession, trade war, port closure…).
-3. Make **3 decisions** on currency, credit, and inventory, guided by three AI advisors.
-4. See the outcome explained in plain language.
-5. Move to the next month.
+3. Review a **portfolio of opportunities** (order, import, export, expansion) that three agents score each month.
+4. Set each agent's action — working capital, hedging, and financing — then advance.
+5. See the outcome explained in plain language.
 
 Your final score ranks you as a **Poor, Average, Good, or Expert CFO**.
 
@@ -41,11 +41,17 @@ Your final score ranks you as a **Poor, Average, Good, or Expert CFO**.
 
 ---
 
-## 🧠 Decisions (3 types)
+## 🧠 Three agents
 
-- **Currency risk** — hedge your USD exposure (none / 50% / 100%)
-- **Customer credit** — accept, Letter of Credit, prepayment, or reject
-- **Inventory** — increase, keep, or reduce stock
+Every month a ranked portfolio of opportunities is generated and evaluated by:
+
+- **Agent A · Working Capital Management** — sets inventory target and customer credit terms (lean / balanced / aggressive), trading off growth vs. carrying cost and default risk.
+- **Agent B · Currency & Hedging** — FX exposure report, hedge recommendation, hedge cost + residual FX risk (cost & risk adjuster).
+- **Agent C · Financing** — chooses how to fund the approved deals (cash / debt / factoring), each with a different cost of capital and risk profile.
+
+The engine selects the capital-efficient mix that maximizes **Expected Economic Profit = PnL − Capital Charge (funding cost) − Hedge Cost − Residual Risk Penalty**, within the working-capital and funding constraints.
+
+Opportunity types: **Customer order**, **Import & resell**, **Export contract**, **Expansion capex**. The player sets each agent's action and advances the month.
 
 ---
 
