@@ -132,21 +132,6 @@ button.primary:hover{background:#285249}
 .mix-total{margin-top:14px;padding-top:10px;border-top:1px solid var(--line);display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
 .mix-total b{font:700 13px Manrope;color:var(--ink)}
 
-/* ---------- Portfolio structure charts ---------- */
-.chart-col{gap:18px}
-.chart-block{display:flex;flex-direction:column;gap:8px}
-.chart-title{font-size:10px;color:var(--muted);letter-spacing:.4px;text-transform:uppercase}
-.chart-legend{display:flex;flex-direction:column;gap:6px;width:100%;margin-top:4px}
-.chart-row{display:flex;align-items:center;gap:8px;font-size:11px}
-.chart-row i{width:10px;height:10px;border-radius:3px;flex:none}
-.chart-row span{color:var(--muted)}
-.chart-row b{margin-left:auto;font:700 11px Manrope;color:var(--ink)}
-.ccy-row{display:flex;flex-direction:column;gap:5px;padding:6px 0}
-.ccy-row + .ccy-row{border-top:1px dashed var(--line)}
-.ccy-head{display:flex;justify-content:space-between;align-items:baseline;font-size:11px}
-.ccy-head b{font:700 12px Manrope;color:var(--ink)}
-.ccy-head span{color:var(--muted);font-size:10px}
-
 /* ---------- Horizontal share bars (history tables) ---------- */
 .hbar-row td{padding:2px 8px 10px;border-bottom:1px solid #edf0ee}
 .hbar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--line)}
@@ -155,15 +140,33 @@ button.primary:hover{background:#285249}
 .hbar-tag{flex:none;width:46px;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
 .hbar-line .hbar{flex:1}
 .rate-now td{background:#eef4f1;font-weight:600}
+.expected-vs-actual{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+.expected-vs-actual>div{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.expected-vs-actual span{display:block;font-size:9px;color:var(--muted)}
+.expected-vs-actual b{font:700 14px Manrope;color:var(--ink)}
+.expected-vs-actual small{display:block;font-size:8px;color:var(--muted);margin-top:2px}
+.expected-vs-actual .good{background:#e6f2ec;border-color:#bfdcc9}
+.expected-vs-actual .bad{background:#fbe9e4;border-color:#eccfc4}
+.expected-vs-actual .good b{color:#1a7a5a}
+.expected-vs-actual .bad b{color:#c0392b}
+@media(max-width:640px){.expected-vs-actual{grid-template-columns:1fr}}
+
+/* ---------- Market tab — larger, colored data values ---------- */
+.big td{font-size:13px;padding:12px 10px}
+.big th{font-size:11px;padding:9px 10px}
+.big td:first-child{color:var(--muted)}
+.big td.drives{font-size:11px;color:var(--muted);text-align:right;font-weight:600}
+.big .val{font:700 15px Manrope;color:var(--ink)}
+.val.up{color:#1a7a5a}
+.val.down{color:#c0392b}
+.val.flat{color:var(--muted)}
 
 /* ---------- Three-agent decision columns & coordinator ---------- */
 .agent-group{margin-top:6px}
 .group-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px}
-.agent-options{display:flex;flex-wrap:wrap;gap:6px}
-.agent-options .agent-action{flex:0 1 auto;width:auto;flex-direction:row;align-items:center;gap:6px;padding:5px 11px;border-radius:99px;text-align:center}
+.agent-options{display:grid;gap:6px}
+.agent-options .agent-action{padding:9px 11px}
 .agent-options .agent-action b{font:600 11px Manrope}
-.agent-options .agent-action i{position:static;padding:1px 6px;font-size:8px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--sage);background:#e6f0ec;border-radius:99px}
-.agent-options .agent-action.selected::after{position:static;top:auto;right:auto;margin-left:1px}
 .coordinator{margin-top:16px}
 .scenario-list{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}
 .scenario{display:flex;flex-direction:column;gap:3px;text-align:left;border:1px solid var(--line);background:#fff;border-radius:10px;padding:12px;cursor:pointer;transition:.15s}

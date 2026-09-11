@@ -58,23 +58,6 @@
     `<div class="title"><div><span>TRADE CFO · MONTH ${G.month} / ${CFO.TOTAL_MONTHS}</span><h1>${name}</h1><p>${desc}</p></div><i class="status">● ${tag}</i></div>`;
   const metric = (l, v, s, w = '') => `<div class="metric ${w}"><label>${l}</label><b>${v}</b><small>${s}</small></div>`;
 
-  function eventBanner() {
-    if (!G.event) return '';
-    const e = G.event, f = e.effects, fx = [];
-    if (f.usdChange) fx.push(`USD ${f.usdChange > 0 ? '+' : ''}${pct(f.usdChange)}`);
-    if (f.shipping) fx.push(`Shipping ${f.shipping > 0 ? '+' : ''}${f.shipping.toFixed(1)}×`);
-    if (f.tariff) fx.push(`Tariff ${f.tariff > 0 ? '+' : ''}${pct(f.tariff)}`);
-    if (f.demand) fx.push(`Demand ${f.demand > 0 ? '+' : ''}${f.demand}`);
-    if (f.recession) fx.push(`Recession ${f.recession > 0 ? '+' : ''}${f.recession}`);
-    if (f.interestSurcharge) fx.push(`Rates ${f.interestSurcharge > 0 ? '+' : ''}${pct(f.interestSurcharge)}`);
-    if (f.costPressure) fx.push(`Costs ${f.costPressure > 0 ? '+' : ''}${pct(f.costPressure)}`);
-    return `<div class="event ${e.impact === 'positive' ? 'good' : 'bad'}">
-      <span class="badge">${e.cat}</span><b>${e.name}</b>
-      <p>${e.desc}</p>
-      ${fx.length ? `<div class="chips">${fx.map((x) => `<span>${x}</span>`).join('')}</div>` : ''}
-    </div>`;
-  }
-
   function updateShell() {
     const hq = document.querySelector('#hdr-month');
     if (hq) hq.textContent = 'Month ' + G.month + ' of ' + CFO.TOTAL_MONTHS;
@@ -101,9 +84,11 @@
   }
 
   function agentGroup(agentKey, action) {
+    const selected = action.selectedIds || [];
+    const recommended = action.recommendedIds || [];
     const opts = action.options.map((op) => {
-      const sel = op.id === action.selectedId;
-      const rec = op.id === action.recommendedId;
+      const sel = selected.includes(op.id);
+      const rec = recommended.includes(op.id);
       return `<button class="agent-action${rec ? ' recommended' : ''}${sel ? ' selected' : ''}" data-agent="${agentKey}" data-key="${action.key}" data-opt="${op.id}"><b>${op.label}</b>${rec ? '<i>Rec</i>' : ''}</button>`;
     }).join('');
     return `<div class="agent-group"><div class="group-label">${action.label}</div><div class="agent-options">${opts}</div></div>`;
@@ -149,16 +134,24 @@
   function recap() {
     const last = G.lastResult;
     if (!last) return '';
-    const lessons = last.outcomes.map((o) => `<div class="lesson"><b>${o.title}</b><p>${o.detail}</p></div>`).join('');
     const bars = G.history.map((h) => {
       const hgt = clamp0((h.profit / 500000) * 100 + 50);
       return `<div class="pbar"><i style="height:${hgt}%;background:${h.profit >= 0 ? '#46786b' : '#dc764d'}"></i><span>M${h.month}</span></div>`;
     }).join('');
-    return `<div class="card recap"><h2>Last month — M${last.month} results</h2>
-      <div class="metrics">${metric('Revenue', money(last.revenue), 'Month ' + last.month)}${metric('Profit', signedMoney(last.profit), 'This month', last.profit < 0 ? 'warn' : '')}${metric('Cash', money(last.cashAfter), 'Ending balance')}${metric('Risk', last.riskScore + '/100', last.creditRating + ' credit')}</div>
-      ${lessons}
-    </div>
-    <div class="card"><h2>Monthly profit</h2><div class="profit-chart">${bars}</div></div>`;
+    const evt = last.event
+      ? `<div class="event ${last.event.impact === 'positive' ? 'good' : 'bad'}"><span class="badge">${last.event.cat}</span><b>${last.event.name} struck</b><p>${last.event.desc}</p></div>`
+      : '';
+    const compare = last.expectedProfit != null
+      ? `<div class="expected-vs-actual">
+          <div><span>Expected profit</span><b>${signedMoney(last.expectedProfit)}</b><small>before the event</small></div>
+          <div class="${last.profit >= 0 ? 'good' : 'bad'}"><span>Actual profit</span><b>${signedMoney(last.profit)}</b><small>after the event</small></div>
+          <div class="${last.profit - last.expectedProfit >= 0 ? 'good' : 'bad'}"><span>Difference</span><b>${signedMoney(last.profit - last.expectedProfit)}</b><small>event impact</small></div>
+        </div>`
+      : '';
+    const outcome = (evt || compare)
+      ? `<div class="card"><h2>Last month — event vs expected</h2>${evt}${compare}</div>`
+      : '';
+    return outcome + `<div class="card"><h2>Monthly profit</h2><div class="profit-chart">${bars}</div></div>`;
   }
 
   function decisions() {
@@ -169,19 +162,10 @@
     function renderDecisions() {
       const dec = CFO.buildDecision(G, choices);
       choices.trades = dec.trades;
-      const r = CFO.risks(G);
-      const c = G.company;
-      const last = G.lastResult;
       el.innerHTML =
         title('Decisions', 'Optimize exports, imports and financing — then pick the coordinator strategy.', '3 AGENTS + COORDINATOR') +
-        `<div class="metrics">${metric('Cash', money(c.cash), 'Available liquidity')}${metric('Revenue (last)', money(last ? last.revenue : c.monthlyRevenue), 'Capacity ' + money(c.monthlyRevenue) + '/mo')}${metric('Profit (last)', last ? signedMoney(last.profit) : '—', 'Cumulative ' + signedMoney(c.cumulativeProfit), c.cumulativeProfit < 0 ? 'warn' : '')}${metric('Debt', money(c.debt), 'Inventory ' + money(c.inventory))}</div>` +
-        `<div class="card"><h2>Key risks</h2>
-          <div class="risk-list">${[['FX risk', r.fx], ['Credit risk', r.credit], ['Supply chain', r.supply], ['Financing', r.financing]].map((x) => `<div><span>${x[0]}</span><div class="track"><i style="width:${x[1]}%;background:${x[1] > 60 ? '#dc764d' : '#46786b'}"></i></div><b>${x[1]}</b></div>`).join('')}</div>
-        </div>` +
         `<div class="agent-cols">${exportColumn(dec.agents.export)}${importColumn(dec.agents.import)}${financeColumn(dec.agents.finance)}</div>` +
         coordinatorPanel(dec.scenarios, scenarioId) +
-        portfolioChartColumn() +
-        eventBanner() +
         `<div class="advance-bar"><button id="advance" class="primary">Advance month →</button></div>` +
         recap();
 
@@ -194,7 +178,11 @@
       });
       document.querySelectorAll('.agent-action[data-agent]').forEach((btn) => {
         btn.onclick = () => {
-          choices[btn.dataset.agent][btn.dataset.key] = btn.dataset.opt;
+          const agent = btn.dataset.agent;
+          const key = btn.dataset.key;
+          const opt = btn.dataset.opt;
+          const arr = choices[agent][key] || [];
+          choices[agent][key] = arr.includes(opt) ? arr.filter((x) => x !== opt) : [...arr, opt];
           scenarioId = 'current';
           renderDecisions();
         };
@@ -218,18 +206,6 @@
     renderDecisions();
   }
 
-  function currencyValuesCard() {
-    const m = G.market;
-    const fx = CFO.CURRENCY_FX || {};
-    const rows = Object.keys(fx).map((ccy) => {
-      const vol = fx[ccy] || 1;
-      const move = m.usdChange * vol;
-      return `<tr><td><b>${ccy}</b></td><td>${vol.toFixed(1)}×</td><td>${(move >= 0 ? '+' : '') + (move * 100).toFixed(1)}%</td><td>${(1 + move).toFixed(3)}</td></tr>`;
-    }).join('');
-    return `<div class="card"><h2>Currency values</h2><p class="sub">Each currency's move and relative value vs your home currency.</p>
-      <table><tr><th>Currency</th><th>Volatility</th><th>Move</th><th>Value</th></tr>${rows}</table></div>`;
-  }
-
   function financingRatesCard() {
     const plan = G.agentActions.A.plan;
     const histRows = (G.history || []).filter((h) => h.rates).map((h) => {
@@ -237,43 +213,54 @@
       return `<tr><td>M${h.month}</td><td>${(r.cashRate * 100).toFixed(2)}%</td><td>${(r.debtRate * 100).toFixed(2)}%</td><td>${(r.factoringRate * 100).toFixed(2)}%</td><td>${(r.wacc * 100).toFixed(2)}%</td></tr>`;
     }).join('');
     return `<div class="card"><h2>Financing rates</h2><p class="sub">Monthly cost of each funding source — now and in past months.</p>
-      <table><tr><th>Period</th><th>Cash</th><th>Debt</th><th>Factoring</th><th>WACC</th></tr>
+      <table class="big"><tr><th>Period</th><th>Cash</th><th>Debt</th><th>Factoring</th><th>WACC</th></tr>
       <tr class="rate-now"><td>Now</td><td>${(plan.cashRate * 100).toFixed(2)}%</td><td>${(plan.debtRate * 100).toFixed(2)}%</td><td>${(plan.factoringRate * 100).toFixed(2)}%</td><td>${(plan.wacc * 100).toFixed(2)}%</td></tr>
       ${histRows}</table></div>`;
   }
 
+  function riskSnapshotCard() {
+    const r = CFO.risks(G);
+    return `<div class="card"><h2>Risk snapshot</h2><p class="sub">The four drivers behind your overall risk score.</p>
+      <div class="risk-list">${[['FX risk', r.fx], ['Credit risk', r.credit], ['Supply chain', r.supply], ['Financing', r.financing]].map((x) => `<div><span>${x[0]}</span><div class="track"><i style="width:${x[1]}%;background:${x[1] > 60 ? '#dc764d' : '#46786b'}"></i></div><b>${x[1]}</b></div>`).join('')}</div>
+      <p class="sub" style="margin-top:12px">Overall risk <b>${r.score}/100</b></p>
+    </div>`;
+  }
+
   function market() {
     const m = G.market;
-    const rows = [
-      ['USD movement', (m.usdChange > 0 ? '+' : '') + pct(m.usdChange), m.usdChange > 0 ? 'USD is stronger — imports cost more, exports earn more in USD.' : m.usdChange < 0 ? 'USD is weaker — imports are cheaper, exports earn less in USD.' : 'USD is flat — FX risk is low across your currency trades.'],
-      ['Shipping costs', m.shippingMultiplier.toFixed(2) + '×', m.shippingMultiplier > 1.2 ? 'Elevated — freight eats into operating profit on every shipment.' : m.shippingMultiplier < 0.85 ? 'Low — cheap to move goods, so trading margins improve.' : 'Normal — freight is not a major factor this month.'],
-      ['Import tariff', pct(m.tariffRate), m.tariffRate > 0.1 ? 'High — raises COGS on imported goods, shrinking import margins.' : m.tariffRate > 0 ? 'Moderate — a small drag on import margins.' : 'None — imports face no tariff drag.'],
-      ['Demand index', Math.round(m.demandIndex) + '/100', m.demandIndex > 75 ? 'Strong — larger export deals are on offer.' : m.demandIndex < 45 ? 'Weak — deals are smaller and carry more risk.' : 'Moderate — deal sizes are balanced.'],
-      ['Recession risk', Math.round(m.recessionRisk) + '/100', m.recessionRisk > 60 ? 'Elevated — export buyers are more likely to default.' : m.recessionRisk < 20 ? 'Low — credit risk is subdued.' : 'Moderate — normal credit risk.'],
-    ];
-    el.innerHTML = title('Market', 'Global conditions and what they mean for your decisions.') +
-      `<div class="metrics">${metric('USD change', (m.usdChange > 0 ? '+' : '') + pct(m.usdChange), 'vs your home currency')}${metric('Shipping', m.shippingMultiplier.toFixed(1) + '×', 'Freight cost multiplier')}${metric('Import tariff', pct(m.tariffRate), 'On imported goods')}${metric('Demand index', Math.round(m.demandIndex) + '/100', 'Customer demand')}</div>` +
-      `<div class="card"><h2>Decision relevance</h2><p class="sub">How each indicator affects this month's choices.</p>
-        ${rows.map((x) => `<div class="impact-row"><div><b>${x[0]}</b><span>${x[1]}</span></div><p>${x[2]}</p></div>`).join('')}
-      </div>` +
+    const fx = CFO.CURRENCY_FX || {};
+    const sources = CFO.IMPORT_SOURCING_OPTIONS || [];
+    const markets = CFO.EXPORT_MARKET_OPTIONS || [];
+    const usdTxt = (m.usdChange > 0 ? '+' : '') + pct(m.usdChange);
+    const usdCls = m.usdChange > 0.0005 ? 'up' : m.usdChange < -0.0005 ? 'down' : 'flat';
+
+    const srcRows = sources.map((s) => {
+      const costTxt = (s.cogsAdj > 0 ? '+' : '') + pct(s.cogsAdj);
+      const costCls = s.cogsAdj < 0 ? 'up' : s.cogsAdj > 0 ? 'down' : 'flat';
+      const riskCls = s.supplyRisk > 6 ? 'down' : s.supplyRisk < 0 ? 'up' : 'flat';
+      return `<tr><td><b>${s.label}</b></td><td><span class="val ${costCls}">${costTxt}</span></td><td><span class="val ${riskCls}">${s.supplyRisk > 0 ? '+' : ''}${s.supplyRisk}</span></td></tr>`;
+    }).join('');
+
+    const mkRows = markets.map((mk) => {
+      const move = m.usdChange * (fx[mk.focus] || 1);
+      const moveTxt = (move >= 0 ? '+' : '') + (move * 100).toFixed(1) + '%';
+      const moveCls = move > 0.0005 ? 'up' : move < -0.0005 ? 'down' : 'flat';
+      return `<tr><td><b>${mk.label}</b></td><td>${mk.focus}</td><td><span class="val ${moveCls}">${moveTxt}</span></td></tr>`;
+    }).join('');
+
+    el.innerHTML = title('Market', 'Import sources and export markets — the data behind each decision.') +
       `<div class="grid">
-        <div class="card"><h2>Market indicators</h2><table>
-          <tr><td>USD movement</td><td><b>${(m.usdChange > 0 ? '+' : '') + pct(m.usdChange)}</b></td></tr>
-          <tr><td>Shipping costs</td><td><b>${m.shippingMultiplier.toFixed(2)}×</b></td></tr>
-          <tr><td>Import tariff</td><td><b>${pct(m.tariffRate)}</b></td></tr>
-          <tr><td>Demand index</td><td><b>${Math.round(m.demandIndex)}/100</b></td></tr>
-          <tr><td>Recession risk</td><td><b>${Math.round(m.recessionRisk)}/100</b></td></tr>
-        </table></div>
-        <div class="card"><h2>Trading context</h2><table>
-          <tr><td>Markets</td><td><b>${G.company.markets.join(', ')}</b></td></tr>
-          <tr><td>Suppliers</td><td><b>${G.company.suppliers.join(', ')}</b></td></tr>
-          <tr><td>Revenue capacity</td><td><b>${money(G.company.monthlyRevenue)}/mo</b></td></tr>
-          <tr><td>Inventory</td><td><b>${money(G.company.inventory)}</b></td></tr>
-        </table></div>
+        <div class="card"><h2>Import sources</h2><p class="sub">Your sourcing options — landed cost vs supply risk.</p>
+          <table class="big"><tr><th>Source</th><th>Cost adj.</th><th>Supply risk</th></tr>${srcRows}</table>
+          <p class="sub" style="margin-top:12px">Shipping <b>${m.shippingMultiplier.toFixed(2)}×</b> · Tariff <b>${pct(m.tariffRate)}</b> · USD <span class="val ${usdCls}">${usdTxt}</span></p>
+        </div>
+        <div class="card"><h2>Export markets</h2><p class="sub">Your focus markets and their currency move.</p>
+          <table class="big"><tr><th>Market</th><th>Currency</th><th>Move</th></tr>${mkRows}</table>
+          <p class="sub" style="margin-top:12px">Demand <b>${Math.round(m.demandIndex)}/100</b> · Recession <b>${Math.round(m.recessionRisk)}/100</b></p>
+        </div>
       </div>` +
-      currencyValuesCard() +
       financingRatesCard() +
-      `<div class="callout"><i>i</i><div><b>Market news</b><p>${G.news.map((n) => n.headline).join(' · ')}</p></div></div>`;
+      riskSnapshotCard();
   }
 
   function currentPortfolio() {
@@ -339,9 +326,7 @@
   }
 
   const FINANCE_COLORS = { Cash: '#46786b', Debt: '#dc764d', Factoring: '#e4b85d' };
-  const IMPORT_COLOR = '#9fd0b8'; // light green
-  const EXPORT_COLOR = '#173f36'; // dark green
-  const CURRENCY_COLORS = { USD: '#173f36', EUR: '#5b6b9e', GBP: '#dc764d', AED: '#e4b85d', CNY: '#c0392b' };
+  const CURRENCY_COLORS = { USD: '#173f36', EUR: '#5b6b9e', CNY: '#c0392b' };
 
   function financingSegmentsFor(financing) {
     return [
@@ -364,72 +349,12 @@
     }));
   }
 
-  function chartLegend(segments) {
-    if (!segments.length) return `<div class="chart-row"><span>None selected</span></div>`;
-    return `<div class="chart-legend">${segments.map((x) => `<div class="chart-row"><i style="background:${x.color}"></i><span>${x.label}</span><b>${money(x.value)}</b></div>`).join('')}</div>`;
-  }
-
   function hbar(segments) {
     const total = segments.reduce((s, x) => s + x.value, 0);
     if (!total) return `<div class="hbar"><i style="width:100%;background:var(--line)"></i></div>`;
     const parts = segments.filter((x) => x.value > 0).map((x) =>
       `<i style="width:${(x.value / total * 100).toFixed(1)}%;background:${x.color}" title="${x.label} ${Math.round(x.value / total * 100)}%"></i>`).join('');
     return `<div class="hbar">${parts}</div>`;
-  }
-
-  function totalFinancingSegments() {
-    const agg = { cashAmount: 0, debtAmount: 0, factoringAmount: 0 };
-    portfolioSeries().forEach((r) => {
-      const f = r.financing || {};
-      agg.cashAmount += f.cashAmount || 0;
-      agg.debtAmount += f.debtAmount || 0;
-      agg.factoringAmount += f.factoringAmount || 0;
-    });
-    return financingSegmentsFor(agg);
-  }
-
-  function tradeByCurrency() {
-    const map = {};
-    portfolioSeries().forEach((r) => (r.trades || []).forEach((t) => {
-      if (!map[t.currency]) map[t.currency] = { import: 0, export: 0 };
-      map[t.currency][t.type] += t.capital;
-    }));
-    return Object.keys(map).map((ccy) => ({
-      currency: ccy,
-      import: map[ccy].import || 0,
-      export: map[ccy].export || 0,
-    }));
-  }
-
-  function tradeCurrencyBars() {
-    const rows = tradeByCurrency();
-    if (!rows.length) return `<div class="chart-row"><span>None selected</span></div>`;
-    return rows.map((r) => {
-      const segs = [
-        { label: 'Import ' + r.currency, value: r.import, color: IMPORT_COLOR },
-        { label: 'Export ' + r.currency, value: r.export, color: EXPORT_COLOR },
-      ];
-      return `<div class="ccy-row">
-        <div class="ccy-head"><b>${r.currency}</b><span>${money(r.import)} imp · ${money(r.export)} exp</span></div>
-        ${hbar(segs)}
-      </div>`;
-    }).join('');
-  }
-
-  function portfolioChartColumn() {
-    const fSeg = totalFinancingSegments();
-    return `<div class="agent-col chart-col">
-      <div class="agent-col-head"><b>Portfolio structure</b><small>Total · all months</small></div>
-      <div class="chart-block">
-        <div class="chart-title">Financing</div>
-        ${hbar(fSeg)}
-        ${chartLegend(fSeg)}
-      </div>
-      <div class="chart-block">
-        <div class="chart-title">Trade · import / export</div>
-        ${tradeCurrencyBars()}
-      </div>
-    </div>`;
   }
 
   function tradeStrategy() {

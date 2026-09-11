@@ -17,14 +17,14 @@
   };
   const COGS_RATIO = 0.55;
   const SALARY_PER_EMPLOYEE = 9000;
-  const FIXED_OVERHEAD = 100000;
-  const BASE_SHIPPING = 60000;
+  const FIXED_OVERHEAD = 175000;
+  const BASE_SHIPPING = 70000;
   const INVENTORY_CARRY_RATE = 0.01;
-  const IMPORT_MARGIN = 0.22;
-  const EXPORT_MARGIN = 0.15;
-  const DEFAULT_LOSS_RATE = 0.70;      // share of a receivable written off on default
+  const IMPORT_MARGIN = 0.10;
+  const EXPORT_MARGIN = 0.07;
+  const DEFAULT_LOSS_RATE = 0.85;      // share of a receivable written off on default
   const INTEREST_RATE = { AAA: 0.0025, AA: 0.003, A: 0.0035, BBB: 0.004, BB: 0.006, B: 0.009, CCC: 0.014, D: 0.025 };
-  const SCORING_WEIGHTS = { cashGrowth: 0.3, profitGrowth: 0.3, riskManagement: 0.2, creditRating: 0.1, survival: 0.1 };
+  const SCORING_WEIGHTS = { cashGrowth: 0.12, profitGrowth: 0.12, riskManagement: 0.54, creditRating: 0.12, survival: 0.10 };
   const BANKRUPTCY_CASH_FLOOR = -1000000;
 
   /* ---------- Agent parameters ---------- */
@@ -40,12 +40,12 @@
     aggressive: { limit: 0.8, floor: 0.05, invMult: 4.0, creditEase: 0.10, demandShift: 6 },
   };
   // Currencies traded — volatility factor relative to USD.
-  const CURRENCY_FX = { USD: 1.0, EUR: 0.9, GBP: 1.1, AED: 0.2, CNY: 0.4 };
+  const CURRENCY_FX = { USD: 1.0, EUR: 0.9, CNY: 0.4 };
   const FACTORING_FEE_RATE = 0.006;
   const FUNDING_MODES = {
     cash:      { label: 'Cash',      budgetMult: 1.0, riskAdd: 0 },
     debt:      { label: 'Debt',      budgetMult: 3.0, riskAdd: 3 },
-    factoring: { label: 'Factoring', budgetMult: 2.8, riskAdd: -12 },
+    factoring: { label: 'Factoring', budgetMult: 3.5, riskAdd: -18 },
   };
   // Financing mix — three source shares (cash / debt / factoring) that always sum to 1.
   function financingPlan(company, market, totalCapital, shares) {
@@ -61,8 +61,8 @@
       debtShare: debt, cashShare: cash, factoringShare: factoring,
       debtRate, cashRate, factoringRate,
       wacc: debt * debtRate + cash * cashRate + factoring * factoringRate,
-      budgetMult: cash * 1 + debt * 3 + factoring * 2.8,
-      riskAdd: debt * 3 + factoring * -12,
+      budgetMult: cash * 1 + debt * 3 + factoring * 3.5,
+      riskAdd: debt * 3 + factoring * -18,
       debtAmount: totalCapital * debt,
       cashAmount: totalCapital * cash,
       factoringAmount: totalCapital * factoring,
@@ -75,7 +75,7 @@
     const cashMax = totalCapital > 0 ? (company.cash * 0.5) / totalCapital : 0;
     const cash = Math.min(0.30, cashMax);
     // Grow factoring with default risk (recession) — it removes receivables risk.
-    const factoring = clamp(0.15 + market.recessionRisk / 200, 0.15, 0.45);
+    const factoring = clamp(0.35 + market.recessionRisk / 200, 0.35, 0.55);
     const debt = clamp(1 - cash - factoring, 0, 1);
     // If borrowing is expensive, shift debt into factoring instead.
     const expensive = rate > FACTORING_FEE_RATE;
@@ -163,7 +163,7 @@
         costPressure: 0,
       };
     }
-    const usdChange = clamp(prev.usdChange * 0.2 + rng.float(-0.10, 0.10), -0.20, 0.20);
+    const usdChange = clamp(prev.usdChange * 0.2 + rng.float(-0.05, 0.05), -0.12, 0.12);
     const shippingMultiplier = clamp(1 + (prev.shippingMultiplier - 1) * 0.35 + rng.float(-0.28, 0.28), 0.5, 1.9);
     let tariffRate = prev.tariffRate;
     if (rng.chance(0.3)) tariffRate = clamp(tariffRate + rng.float(0.05, 0.14), 0, 0.5);
@@ -238,13 +238,11 @@
     const specs = [
       { ccy: 'USD', mult: 1.5 },
       { ccy: 'EUR', mult: 1.2 },
-      { ccy: 'GBP', mult: 0.9 },
-      { ccy: 'AED', mult: 1.3 },
       { ccy: 'CNY', mult: 1.1 },
     ];
     specs.forEach((s) => {
       const value = round1(s.mult * 1000000 * (0.8 + demand * 0.3));
-      const risk = clamp(0.04 + market.recessionRisk * 0.001, 0.02, 0.2);
+      const risk = clamp(0.06 + market.recessionRisk * 0.0011, 0.02, 0.3);
       const pnl = round1(value * (EXPORT_MARGIN * (1 - risk) - DEFAULT_LOSS_RATE * risk));
       opps.push(makeOpp(`export-${s.ccy.toLowerCase()}-${month}`, 'export', `Export to ${s.ccy} buyer`,
         `Sell ${money(value)} of goods to a ${s.ccy}-paying buyer.`,
@@ -306,41 +304,16 @@
   }
 
   /* ---------- Three-agent trade strategy model ---------- */
-  const EXPORT_PRICE_OPTIONS = [
-    { id: 'px-3', label: 'Discount −3%', priceAdj: -0.03 },
-    { id: 'px0', label: 'Hold price', priceAdj: 0 },
-    { id: 'px3', label: 'Raise +3%', priceAdj: 0.03 },
-    { id: 'px5', label: 'Raise +5%', priceAdj: 0.05 },
-  ];
-  const FOCUS_BOOST = 0.12;   // margin uplift for the focused export market
+  const FOCUS_BOOST = 0.60;   // margin uplift for the focused export market
   const EXPORT_MARKET_OPTIONS = [
-    { id: 'mk-bal', label: 'Balanced', demandShift: 0, marketRisk: 0, focus: null },
-    { id: 'mk-us', label: 'Focus USA', demandShift: 2, marketRisk: 3, focus: 'USD' },
-    { id: 'mk-eu', label: 'Focus Europe', demandShift: 2, marketRisk: 3, focus: 'EUR' },
-    { id: 'mk-uk', label: 'Focus UK', demandShift: 2, marketRisk: 3, focus: 'GBP' },
-    { id: 'mk-me', label: 'Focus Middle East', demandShift: 2, marketRisk: 3, focus: 'AED' },
-    { id: 'mk-cn', label: 'Focus China', demandShift: 2, marketRisk: 3, focus: 'CNY' },
-  ];
-  const EXPORT_COLLECTION_OPTIONS = [
-    { id: 'cl-fast', label: 'Fast · 45d', exportRiskAdj: -0.03 },
-    { id: 'cl-std', label: 'Standard · 60d', exportRiskAdj: 0 },
-    { id: 'cl-ext', label: 'Extended · 90d', exportRiskAdj: 0.05 },
+    { id: 'mk-us', label: 'USA', demandShift: 2, marketRisk: 3, focus: 'USD' },
+    { id: 'mk-eu', label: 'Europe', demandShift: 2, marketRisk: 3, focus: 'EUR' },
+    { id: 'mk-cn', label: 'China', demandShift: 2, marketRisk: 3, focus: 'CNY' },
   ];
   const IMPORT_SOURCING_OPTIONS = [
-    { id: 'so-cn', label: 'China · low cost', cogsAdj: -0.02, supplyRisk: 8 },
-    { id: 'so-bd', label: 'Bangladesh · lowest cost', cogsAdj: -0.03, supplyRisk: 12 },
+    { id: 'so-cn', label: 'China · low cost', cogsAdj: -0.04, supplyRisk: 9 },
     { id: 'so-vn', label: 'Vietnam · balanced', cogsAdj: 0, supplyRisk: 0 },
-    { id: 'so-tr', label: 'Turkey · near market', cogsAdj: 0.01, supplyRisk: -3 },
-    { id: 'so-mx', label: 'Mexico · nearshore', cogsAdj: 0.02, supplyRisk: -5 },
-    { id: 'so-div', label: 'Diversified', cogsAdj: 0.03, supplyRisk: -8 },
-  ];
-  const IMPORT_TERMS_OPTIONS = [
-    { id: 'tm-30', label: '30 days', cogsAdj: 0, dpoBenefit: 0 },
-    { id: 'tm-60', label: '60 days', cogsAdj: 0.008, dpoBenefit: 40000 },
-  ];
-  const IMPORT_ORDER_OPTIONS = [
-    { id: 'or-std', label: 'Standard', cogsAdj: 0, carryAdj: 0 },
-    { id: 'or-plus', label: '+20% size', cogsAdj: -0.015, carryAdj: 0.002 },
+    { id: 'so-mx', label: 'Mexico · nearshore', cogsAdj: 0.04, supplyRisk: -7 },
   ];
 
   function pick(list, id) { return list.find((o) => o.id === id) || list[0]; }
@@ -348,72 +321,78 @@
   function resolveActions(selections) {
     const ex = (selections && selections.export) || {};
     const im = (selections && selections.import) || {};
-    const px = pick(EXPORT_PRICE_OPTIONS, ex.price);
-    const mk = pick(EXPORT_MARKET_OPTIONS, ex.market);
-    const cl = pick(EXPORT_COLLECTION_OPTIONS, ex.collection);
-    const so = pick(IMPORT_SOURCING_OPTIONS, im.sourcing);
-    const tm = pick(IMPORT_TERMS_OPTIONS, im.terms);
-    const or = pick(IMPORT_ORDER_OPTIONS, im.order);
+    const markets = (Array.isArray(ex.market) && ex.market.length) ? ex.market : ['mk-eu'];
+    const sources = (Array.isArray(im.sourcing) && im.sourcing.length) ? im.sourcing : ['so-vn'];
+
+    let marketShift = 0, marketRisk = 0;
+    const focusCcys = new Set();
+    markets.forEach((id) => {
+      const mk = pick(EXPORT_MARKET_OPTIONS, id);
+      marketShift += mk.demandShift || 0;
+      marketRisk += mk.marketRisk || 0;
+      if (mk.focus) focusCcys.add(mk.focus);
+    });
+
+    let cogsAdj = 0, supplyRisk = 0;
+    sources.forEach((id) => {
+      const so = pick(IMPORT_SOURCING_OPTIONS, id);
+      cogsAdj += so.cogsAdj || 0;
+      supplyRisk += so.supplyRisk || 0;
+    });
+
     return {
-      priceAdj: px.priceAdj || 0,
-      marketShift: mk.demandShift || 0,
-      marketRisk: mk.marketRisk || 0,
-      focusCcy: mk.focus || null,
-      exportRiskAdj: cl.exportRiskAdj || 0,
-      cogsAdj: (so.cogsAdj || 0) + (tm.cogsAdj || 0) + (or.cogsAdj || 0),
-      supplyRisk: so.supplyRisk || 0,
-      carryAdj: or.carryAdj || 0,
-      dpoBenefit: tm.dpoBenefit || 0,
+      priceAdj: 0,
+      marketShift,
+      marketRisk,
+      focusCcys,
+      exportRiskAdj: 0,
+      cogsAdj,
+      supplyRisk,
+      carryAdj: 0,
+      dpoBenefit: 0,
       liquidityRisk: 0,
       fxFinancingRisk: 0,
       rateAdj: 0,
     };
   }
 
-  function bestMarket(market) {
-    const map = { USD: 'mk-us', EUR: 'mk-eu', GBP: 'mk-uk', AED: 'mk-me', CNY: 'mk-cn' };
-    let best = 'mk-bal', bestFx = 0.02;
-    Object.keys(map).forEach((ccy) => {
-      const fx = (market.usdChange || 0) * (CURRENCY_FX[ccy] || 1);
-      if (fx > bestFx) { bestFx = fx; best = map[ccy]; }
-    });
-    return best;
+  function recommendedMarkets(market) {
+    const map = { USD: 'mk-us', EUR: 'mk-eu', CNY: 'mk-cn' };
+    const scored = Object.keys(map)
+      .map((ccy) => ({ id: map[ccy], fx: (market.usdChange || 0) * (CURRENCY_FX[ccy] || 1) }))
+      .sort((a, b) => b.fx - a.fx);
+    const rec = scored.filter((s) => s.fx > 0).map((s) => s.id);
+    if (!rec.length) rec.push(scored[0].id);
+    return rec.slice(0, 2);
+  }
+
+  function recommendedSources(market) {
+    const supplyStress = market.shippingMultiplier > 1.3 || market.tariffRate > 0.1;
+    return supplyStress ? ['so-mx'] : ['so-cn', 'so-vn'];
   }
 
   function defaultSelections(company, market, totalCapital) {
     const rs = recommendShares(company, market, totalCapital);
     const shares = pctTriplet(rs.cash, rs.debt, rs.factoring);
-    const demand = market.demandIndex, recession = market.recessionRisk;
-    const supplyStress = market.shippingMultiplier > 1.3 || market.tariffRate > 0.1;
     return {
-      export: {
-        price: demand > 70 && recession < 40 ? 'px3' : (demand < 45 ? 'px-3' : 'px0'),
-        market: bestMarket(market),
-        collection: recession > 50 ? 'cl-fast' : 'cl-std',
-      },
-      import: {
-        sourcing: supplyStress ? 'so-div' : 'so-vn',
-        terms: company.cash < company.monthlyRevenue * 2 ? 'tm-60' : 'tm-30',
-        order: demand > 60 ? 'or-plus' : 'or-std',
-      },
-      finance: {
-        A: { cash: shares.cash, debt: shares.debt, factoring: shares.factoring },
-      },
+      export: { market: recommendedMarkets(market) },
+      import: { sourcing: recommendedSources(market) },
+      finance: { A: { cash: shares.cash, debt: shares.debt, factoring: shares.factoring } },
     };
   }
 
   function aggressiveSelections() {
     return {
-      export: { price: 'px5', market: 'mk-cn', collection: 'cl-ext' },
-      import: { sourcing: 'so-bd', terms: 'tm-60', order: 'or-plus' },
+      export: { market: ['mk-cn', 'mk-us'] },
+      import: { sourcing: ['so-cn'] },
       finance: { A: { cash: 10, debt: 80, factoring: 10 } },
     };
   }
 
   function conservativeSelections() {
     return {
-      export: { price: 'px-3', market: 'mk-bal', collection: 'cl-fast' },
-      import: { sourcing: 'so-div', terms: 'tm-30', order: 'or-std' },
+      export: { market: ['mk-eu'] },
+      import: { sourcing: ['so-mx'] },
       finance: { A: { cash: 60, debt: 20, factoring: 20 } },
     };
   }
@@ -436,7 +415,7 @@
         decisionProfit += o.capital * IMPORT_MARGIN;
         fxImpact -= fx;
       } else {
-        const margin = o.capital * EXPORT_MARGIN * (1 + mods.priceAdj) * (mods.focusCcy && o.currency === mods.focusCcy ? 1 + FOCUS_BOOST : 1);
+        const margin = o.capital * EXPORT_MARGIN * (1 + mods.priceAdj) * (mods.focusCcys.has(o.currency) ? 1 + FOCUS_BOOST : 1);
         const risk = clamp(o.creditRisk + (posture.creditEase || 0) + mods.exportRiskAdj, 0, 0.9) * (1 - plan.factoringShare);
         decisionProfit += margin - o.capital * DEFAULT_LOSS_RATE * risk;
         fxImpact += fx;
@@ -499,20 +478,16 @@
     const agents = {
       export: {
         name: 'Export Optimization', objective: 'Maximize export revenue × gross margin', metric: 'Incremental profit',
-        inputs: ['Sales by market', 'Product margins', 'DSO', 'Market growth', 'Currency strength'],
+        inputs: ['Sales by market', 'Product margins', 'Market growth', 'Currency strength'],
         actions: [
-          { key: 'market', label: 'Market reallocation', options: EXPORT_MARKET_OPTIONS, selectedId: sel.export.market, recommendedId: rec.export.market },
-          { key: 'price', label: 'Price adjustment', options: EXPORT_PRICE_OPTIONS, selectedId: sel.export.price, recommendedId: rec.export.price },
-          { key: 'collection', label: 'Collection (DSO)', options: EXPORT_COLLECTION_OPTIONS, selectedId: sel.export.collection, recommendedId: rec.export.collection },
+          { key: 'market', label: 'Market reallocation', options: EXPORT_MARKET_OPTIONS, selectedIds: [...sel.export.market], recommendedIds: [...rec.export.market] },
         ],
       },
       import: {
         name: 'Import Optimization', objective: 'Minimize landed cost + supply risk', metric: 'Cost savings − supply risk',
-        inputs: ['Supplier prices', 'Freight costs', 'Duties / tariffs', 'Payment terms', 'Country risk'],
+        inputs: ['Supplier prices', 'Freight costs', 'Duties / tariffs', 'Country risk'],
         actions: [
-          { key: 'sourcing', label: 'Shift sourcing', options: IMPORT_SOURCING_OPTIONS, selectedId: sel.import.sourcing, recommendedId: rec.import.sourcing },
-          { key: 'order', label: 'Consolidate orders', options: IMPORT_ORDER_OPTIONS, selectedId: sel.import.order, recommendedId: rec.import.order },
-          { key: 'terms', label: 'Negotiate terms (DPO)', options: IMPORT_TERMS_OPTIONS, selectedId: sel.import.terms, recommendedId: rec.import.terms },
+          { key: 'sourcing', label: 'Shift sourcing', options: IMPORT_SOURCING_OPTIONS, selectedIds: [...sel.import.sourcing], recommendedIds: [...rec.import.sourcing] },
         ],
       },
       finance: {
@@ -614,7 +589,7 @@
         decisionProfit += margin;
         outcomes.push({ title: 'Import resold', detail: `You bought ${money(o.capital)} of ${o.currency} goods and resold them for a ${money(margin)} margin. FX impact ${money(fx)} on a ${(fxChange * 100).toFixed(1)}% ${o.currency} move.`, good: true });
       } else if (o.type === 'export') {
-        const margin = o.capital * EXPORT_MARGIN * (1 + mods.priceAdj) * (mods.focusCcy && o.currency === mods.focusCcy ? 1 + FOCUS_BOOST : 1);
+        const margin = o.capital * EXPORT_MARGIN * (1 + mods.priceAdj) * (mods.focusCcys.has(o.currency) ? 1 + FOCUS_BOOST : 1);
         const risk = clamp(o.creditRisk + creditEase + mods.exportRiskAdj, 0, 0.9) * (1 - factoringShare);
         if (rng.chance(risk)) {
           const loss = o.capital * DEFAULT_LOSS_RATE;
@@ -728,7 +703,7 @@
     const rng = createRng(monthSeed(state.seed, state.month));
     state.market = generateMarket(rng, state.month === 1 ? null : state.market);
     state.event = pickEvent(rng, state.event && state.event.id);
-    applyEvent(state.market, state.event);
+    // The event is applied AFTER the player decides (see resolveChoices).
     state.news = generateNews(rng, state.market, state.month);
     state.opportunities = generateOpportunities(rng, state.company, state.market, state.month);
     state.agentActions = generateAgentActions(state.company, state.market, state.opportunities);
@@ -755,8 +730,15 @@
     const included = selectPortfolio(state.company, opps, posture, plan.budgetMult).included;
     const funded = [...included].reduce((s, id) => s + (opps.find((o) => o.id === id)?.capital || 0), 0);
     const mods = resolveActions(selections);
+    // Expected profit/risk — projected on the pre-event market (what the player sees when deciding).
+    const expected = projectMonth(state.company, state.market, opps, selections);
+    // The event happens AFTER the decision, shifting the market for the actual outcome.
+    if (state.event) applyEvent(state.market, state.event);
     const rng = createRng(monthSeed(state.seed, state.month + 1000));
     const { company, result } = resolveMonth(rng, state.company, state.market, opps, [...included], posture, plan, state.month, funded, mods);
+    result.event = state.event ? { name: state.event.name, desc: state.event.desc, cat: state.event.cat, impact: state.event.impact } : null;
+    result.expectedProfit = expected.profit;
+    result.expectedRisk = expected.risk;
     result.portfolio = {
       trades: [...included].map((id) => {
         const o = opps.find((x) => x.id === id);
@@ -798,6 +780,7 @@
     money, signedMoney, round1, pct: (n) => (n * 100).toFixed(1) + '%',
     HEDGE_FEE_RATE, FX_RISK_FACTOR, INTEREST_RATE,
     FUNDING_MODES, FACTORING_FEE_RATE, SHORT_RATE, CURRENCY_FX,
+    EXPORT_MARKET_OPTIONS, IMPORT_SOURCING_OPTIONS,
     buildDecision: (state, selections) => buildDecision(state, selections),
     recommend: (state, selections) => {
       state.agentActions = generateAgentActions(state.company, state.market, state.opportunities, selections);
