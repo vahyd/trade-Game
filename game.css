@@ -93,7 +93,8 @@ button.primary:hover{background:#285249}
 .ctx-flag.limited{background:var(--yellow);color:#5c4a12}
 .ctx-flag.rejected{background:var(--orange)}
 .opp-context .ctx-econ{margin-left:auto;font:700 13px Manrope;color:var(--ink)}
-.agent-cols{display:grid;grid-template-columns:1fr;gap:14px;margin-top:16px}
+.agent-cols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:16px}
+@media(max-width:900px){.agent-cols{grid-template-columns:1fr}}
 .agent-col{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px}
 .agent-col-head{display:flex;flex-direction:column;gap:2px}
 .agent-col-head b{font:700 14px Manrope;color:var(--ink)}
@@ -121,16 +122,47 @@ button.primary:hover{background:#285249}
 .recap .metrics{margin:8px 0 4px}
 
 /* ---------- Financing-mix sliders ---------- */
-.slider-wrap{margin-top:2px;padding-top:10px;border-top:1px solid var(--line)}
+.slider-wrap{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin-top:2px;padding-top:12px;border-top:1px solid var(--line)}
 .slider-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:6px}
 .agent-slider{width:100%;accent-color:var(--green)}
 .slider-meta{display:flex;justify-content:space-between;align-items:baseline;margin-top:8px}
 .slider-val{font:700 14px Manrope;color:var(--green)}
 .slider-rec{font-size:10px;color:var(--muted)}
-.slider-row + .slider-row{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)}
+.slider-row + .slider-row{margin-top:0;padding-top:0;border-top:0}
+.debt-fixed{padding-top:10px;margin-top:2px;border-top:1px solid var(--line)}
 .slider-pct{font:700 12px Manrope;color:var(--green)}
 .mix-total{margin-top:14px;padding-top:10px;border-top:1px solid var(--line);display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
 .mix-total b{font:700 13px Manrope;color:var(--ink)}
+.fin-split{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:center;margin-top:2px;padding-top:12px;border-top:1px solid var(--line)}
+.fin-segments{display:grid;gap:6px}
+.fin-seg{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--paper)}
+.fin-seg span{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.fin-seg b{font:700 13px Manrope;color:var(--ink)}
+.fin-seg small{font-size:9px;color:var(--muted)}
+.fin-seg.debt{border-color:#c9a24b;background:#fbf7ee}
+.fin-seg.debt b{color:#a8822f}
+.cash-bar-line{display:flex;justify-content:space-between;align-items:baseline;font-size:10px;color:var(--muted);margin-bottom:8px}
+.cash-bar-line b{font:700 12px Manrope;color:var(--ink)}
+#advance{min-width:200px;text-align:center}
+#advance.gray{background:#9aa4a1;color:#fff}
+@media(max-width:720px){.fin-split{grid-template-columns:1fr}}
+@media(max-width:720px){.slider-wrap{grid-template-columns:1fr}}
+
+/* ---------- Financing + expected-profit box ---------- */
+.fin-row{display:grid;grid-template-columns:1.2fr .8fr;gap:14px;margin-bottom:16px}
+.profit-total{font:800 30px Manrope;margin:10px 0 2px}
+.profit-total.up{color:#1a7a5a}
+.profit-total.down{color:#c0392b}
+.profit-stages{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+.profit-stages td{padding:7px 8px;border-bottom:1px solid #edf0ee}
+.profit-stages td:last-child{text-align:right;font-weight:700}
+.profit-stages .up{color:#1a7a5a}
+.profit-stages .down{color:#c0392b}
+.fin-needed{margin-top:14px;padding-top:10px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--muted)}
+.fin-needed b{font:700 17px Manrope;color:var(--ink)}
+.fin-needed b.up{color:#1a7a5a}
+.fin-needed b.down{color:#c0392b}
+@media(max-width:900px){.fin-row{grid-template-columns:1fr}}
 
 /* ---------- Horizontal share bars (history tables) ---------- */
 .hbar-row td{padding:2px 8px 10px;border-bottom:1px solid #edf0ee}
@@ -140,6 +172,7 @@ button.primary:hover{background:#285249}
 .hbar-tag{flex:none;width:46px;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
 .hbar-line .hbar{flex:1}
 .rate-now td{background:#eef4f1;font-weight:600}
+.good-row td{background:#eef4f1}
 .expected-vs-actual{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
 .expected-vs-actual>div{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
 .expected-vs-actual span{display:block;font-size:9px;color:var(--muted)}
@@ -161,6 +194,35 @@ button.primary:hover{background:#285249}
 .val.down{color:#c0392b}
 .val.flat{color:var(--muted)}
 
+/* ---------- Decisions tab — prominent import / export market data ---------- */
+.market-data{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+.market-data .card h2{font:700 16px Manrope}
+.market-data .big td{font-size:16px;padding:14px 12px}
+.market-data .big th{font-size:13px;padding:10px 12px}
+.market-data .big td:first-child{font:700 16px Manrope;color:var(--ink)}
+.market-data .big .val{font:800 22px Manrope}
+.market-data .sub{font-size:11px}
+.market-data .big{display:block;margin:0}
+.market-data .big th,.market-data .big td{white-space:normal}
+.market-data .big th small{display:block;font-weight:600;color:var(--muted);font-size:9px;margin-top:3px}
+
+/* ---------- How selections feed the math ---------- */
+.flow3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:4px}
+.flow-col{border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--paper)}
+.flow-col h3{font:700 12px Manrope;margin:0 0 8px}
+.flow-col table{width:100%;border-collapse:collapse}
+.flow-col th,.flow-col td{text-align:left;font-size:11px;padding:4px 6px;border-bottom:1px solid var(--line)}
+.flow-col th{color:var(--muted);font-weight:600}
+.flow-col td:last-child{text-align:right}
+.fm{font-size:11px;line-height:1.65;margin:8px 0 0;color:var(--ink)}
+.fm b{font-weight:700}
+.fm b.up{color:#1a7a5a}
+@media(max-width:900px){.flow3{grid-template-columns:1fr}}
+.market-pick{border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 13px;font:700 15px Manrope;color:var(--ink);cursor:pointer;transition:.15s;width:100%;text-align:left}
+.market-pick:hover{border-color:var(--sage)}
+.market-pick.selected{border-color:var(--green);background:#eef4f1;color:var(--green);box-shadow:inset 3px 0 0 var(--green)}
+@media(max-width:900px){.market-data{grid-template-columns:1fr}}
+
 /* ---------- Three-agent decision columns & coordinator ---------- */
 .agent-group{margin-top:6px}
 .group-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px}
@@ -176,3 +238,38 @@ button.primary:hover{background:#285249}
 .scenario small{font-size:10px;color:var(--muted)}
 .scenario.active{border-color:var(--green);background:#eef4f1;box-shadow:inset 3px 0 0 var(--green)}
 @media(max-width:720px){.scenario-list{grid-template-columns:1fr 1fr}}
+
+/* ---------- Compact default view (fit without scrolling) ---------- */
+header{height:60px;padding:0 22px}
+#view{padding:18px 24px}
+.title{margin-bottom:14px}
+.title h1{font:700 22px Manrope;margin:4px 0}
+.title p{font-size:10px}
+.metric{padding:12px 14px}
+.metric b{font:700 18px Manrope;margin:5px 0 3px}
+.metric small{font-size:8px}
+.metrics{gap:10px;margin-bottom:10px}
+.card{padding:14px 16px}
+.card h2{font:700 12px Manrope}
+.sub{font-size:8px}
+.market-data{gap:10px;margin-bottom:10px}
+.market-data .card h2{font:700 15px Manrope}
+.market-data .big td{font-size:14px;padding:8px 10px}
+.market-data .big th{font-size:10px;padding:6px 10px}
+.market-data .big .val{font:800 17px Manrope}
+.fin-row{grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.slider-wrap{gap:10px;padding-top:8px}
+.slider-meta{margin-top:5px}
+.mix-total{margin-top:9px;padding-top:7px}
+.fin-needed{margin-top:9px;padding-top:7px}
+.profit-total{font:800 24px Manrope;margin:6px 0 2px}
+.profit-stages{margin-top:6px;font-size:12px}
+.profit-stages td{padding:4px 8px}
+.profit-stages th{padding:4px 8px;font-size:10px}
+.profit-stages .total-row td{border-top:1px solid var(--line);font-weight:800;color:var(--ink)}
+.profit-stages th:last-child{text-align:right}
+.profit-stages .cum{color:var(--sage);font-weight:800}
+.advance-bar{margin-top:10px}
+.advance-bar button{padding:9px 18px;font-size:12px}
+.advance-bar button.gray{background:#9aa4a1;color:#fff}
+.horizontal-bars{margin-top:15px}

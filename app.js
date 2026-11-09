@@ -11,36 +11,26 @@
   const SAVE_KEY = 'trade-cfo-agents-v5';
   let G = null;
   let currentPage = 'Decisions';
-  let choices = { export: {}, import: {}, finance: { A: { cash: 34, debt: 33, factoring: 33 } }, trades: [] };
+  let choices = { export: {}, import: {}, finance: { A: { cash: 40, debt: 20, factoring: 40 } }, trades: [] };
+  let pendingAdvance = false;
 
-  const SHARE_KEYS = ['cash', 'debt', 'factoring'];
+  // Debt is a constant 20% of financing; the trade-off is between cash and factoring.
   function normalizeA(raw) {
     raw = raw || {};
-    let v = SHARE_KEYS.map((k) => clamp0(raw[k] || 0));
-    const sum = v.reduce((a, b) => a + b, 0) || 100;
-    v = v.map((x) => Math.round((x / sum) * 100));
-    const diff = 100 - v.reduce((a, b) => a + b, 0);
-    if (diff !== 0) v[v.indexOf(Math.max(...v))] += diff;
-    return { cash: v[0], debt: v[1], factoring: v[2] };
+    const cash = clamp0(raw.cash || 0);
+    const factoring = clamp0(raw.factoring || 0);
+    const sum = (cash + factoring) || 80;
+    const c = Math.round((cash / sum) * 80);
+    return { cash: c, debt: 20, factoring: 80 - c };
   }
-  // Move one financing share while keeping the three shares summing to 100%.
+  // Move the cash/factoring trade-off; debt stays fixed at 20%.
   function setShare(key, value) {
+    if (key === 'debt') return;
     const A = choices.finance.A;
-    const delta = value - A[key];
-    const others = SHARE_KEYS.filter((k) => k !== key);
-    let rem = -delta;
-    const otherSum = others.reduce((s, k) => s + A[k], 0);
-    if (otherSum > 0) {
-      others.forEach((k, i) => {
-        const take = i === others.length - 1 ? rem : Math.round(rem * (A[k] / otherSum));
-        A[k] = clamp0(A[k] + take);
-        rem -= take;
-      });
-    } else {
-      A[others[0]] = clamp0(A[others[0]] + rem);
-    }
-    A[key] = clamp0(value);
-    choices.finance.A = normalizeA(A);
+    const other = key === 'cash' ? 'factoring' : 'cash';
+    A[key] = Math.min(80, clamp0(value));
+    A[other] = 80 - A[key];
+    choices.finance.A = { cash: A.cash, debt: 20, factoring: A.factoring };
   }
 
   function cloneSel(s) { return JSON.parse(JSON.stringify(s)); }
@@ -79,56 +69,92 @@
   }
 
   /* ---------- pages ---------- */
-  function agentHead(ag) {
-    return `<div class="agent-col-head"><b>${ag.name}</b><small>${ag.objective}</small></div><p class="agent-col-sum">${ag.inputs.join(' · ')}</p>`;
-  }
-
-  function agentGroup(agentKey, action) {
-    const selected = action.selectedIds || [];
-    const recommended = action.recommendedIds || [];
-    const opts = action.options.map((op) => {
-      const sel = selected.includes(op.id);
-      const rec = recommended.includes(op.id);
-      return `<button class="agent-action${rec ? ' recommended' : ''}${sel ? ' selected' : ''}" data-agent="${agentKey}" data-key="${action.key}" data-opt="${op.id}"><b>${op.label}</b>${rec ? '<i>Rec</i>' : ''}</button>`;
-    }).join('');
-    return `<div class="agent-group"><div class="group-label">${action.label}</div><div class="agent-options">${opts}</div></div>`;
-  }
-
-  function exportColumn(ag) {
-    return `<div class="agent-col" data-key="export">${agentHead(ag)}${ag.actions.map((a) => agentGroup('export', a)).join('')}</div>`;
-  }
-
-  function importColumn(ag) {
-    return `<div class="agent-col" data-key="import">${agentHead(ag)}${ag.actions.map((a) => agentGroup('import', a)).join('')}</div>`;
-  }
-
   function financeColumn(ag) {
     const plan = ag.plan;
     const A = ag.shares;
-    const sources = [
-      { key: 'cash', label: 'Cash', amount: plan.cashAmount, rate: plan.cashRate },
-      { key: 'debt', label: 'Debt', amount: plan.debtAmount, rate: plan.debtRate },
-      { key: 'factoring', label: 'Factoring', amount: plan.factoringAmount, rate: plan.factoringRate },
-    ];
-    const sliders = sources.map((s) => `
-      <div class="slider-row">
-        <div class="slider-labels"><span>${s.label}</span><span class="slider-pct">${A[s.key]}%</span></div>
-        <input type="range" class="agent-slider" data-key="${s.key}" min="0" max="100" step="1" value="${A[s.key]}">
-        <div class="slider-meta"><span class="slider-val">${money(s.amount)}</span><span class="slider-rec">${(s.rate * 100).toFixed(2)}%/mo</span></div>
-      </div>`).join('');
+    const cashPct = A.cash;
+    const factoringPct = 80 - cashPct;
+    const seg = (label, amount, rate, note = '') => `
+      <div class="fin-seg">
+        <span>${label}</span>
+        <b>${money(amount)}</b>
+        <small>${(rate * 100).toFixed(2)}%/mo${note ? ' · ' + note : ''}</small>
+      </div>`;
     const total = plan.cashAmount + plan.debtAmount + plan.factoringAmount;
-    return `<div class="agent-col" data-key="finance">${agentHead(ag)}
-      <div class="slider-wrap">${sliders}<div class="mix-total">Total financing <b>${money(total)}</b></div></div>
-      ${ag.actions.map((a) => agentGroup('finance', a)).join('')}
+    return `<div class="card finance-card"><h2>Financing</h2><p class="sub">20% of financing always goes through debt. The slider sets how much of available cash is kept as buffer vs used as factoring. A cash buffer absorbs negative event returns; otherwise factoring doubles as a burden.</p>
+      <div class="fin-split">
+        <div class="fin-slider">
+          <div class="cash-bar-line"><span>Available cash</span><b>${money(G.company.cash)}</b></div>
+          <input type="range" class="agent-slider" data-key="cash" min="0" max="80" step="1" value="${cashPct}"${pendingAdvance ? ' disabled' : ''}>
+          <div class="slider-meta"><span class="slider-val">${money(plan.cashAmount)} buffer</span><span class="slider-rec">${money(plan.factoringAmount)} factoring</span></div>
+        </div>
+        <div class="fin-segments">
+          ${seg('Debt · 20%', plan.debtAmount, plan.debtRate, 'burden').replace('fin-seg', 'fin-seg debt')}
+        </div>
+      </div>
+      <div class="mix-total">Total financing <b>${money(total)}</b></div>
     </div>`;
   }
 
-  function coordinatorPanel(scenarios, activeId) {
-    const opts = scenarios.map((s) => {
-      const active = s.id === activeId;
-      return `<button class="scenario${active ? ' active' : ''}" data-scenario="${s.id}"><b>${s.label}</b><span>${signedMoney(s.profit)}</span><small>Risk ${s.risk}/100</small></button>`;
+  function profitBox(sel) {
+    const p = CFO.project(G, sel);
+    const stages = [
+      ['Import', 'importContribution'],
+      ['Export', 'exportContribution'],
+      ['Financing', 'financingCost'],
+    ];
+    const historyNpv = (G.history || []).reduce((s, h, i) => s + (h.profit || 0) / Math.pow(1.01, i + 1), 0);
+    const exp = G.pendingExpected || null;
+    const actualMode = !!(pendingAdvance && exp);
+    const negEvent = !!(G.lastResult && G.lastResult.event && G.lastResult.event.impact === 'negative');
+    const posEvent = !!(G.lastResult && G.lastResult.event && G.lastResult.event.impact === 'positive');
+
+    const srcIds = (sel.import && sel.import.sourcing) || [];
+    const mkIds = (sel.export && sel.export.market) || [];
+    const mPre = G.market;
+    const revPre = G.company.monthlyRevenue * (0.88 + Math.max(0, Math.min(100, mPre.demandIndex)) / 100 * 0.4);
+    let eImp = 0, eExp = 0;
+    (CFO.IMPORT_SOURCING_OPTIONS ? CFO.IMPORT_SOURCING_OPTIONS(mPre) : []).forEach((s) => {
+      if (srcIds.includes(s.id)) eImp += revPre * 0.08 * (1 + Math.abs(s.supplyRisk) * 0.02);
+    });
+    (CFO.EXPORT_MARKET_OPTIONS ? CFO.EXPORT_MARKET_OPTIONS(mPre) : []).forEach((mk) => {
+      if (mkIds.includes(mk.id)) eExp += revPre * 0.04 * (1 + mk.marketRisk * 0.02);
+    });
+    const eFin = actualMode ? exp.financingCost : p.financingCost;
+
+    let aImp = eImp, aExp = eExp, aFin = eFin;
+    if (actualMode) {
+      if (negEvent) { aImp = eImp * 0.8; aExp = eExp * 0.8; }
+      else if (posEvent) { aImp = eImp * 1.2; aExp = eExp * 1.2; }
+      // Double factoring burden can push actual financing below expected.
+      aFin = eFin - (G.lastResult && G.lastResult.financingPenalty || 0);
+    }
+
+    const expectedVals = { importContribution: eImp, exportContribution: eExp, financingCost: eFin };
+    const actualVals = { importContribution: aImp, exportContribution: aExp, financingCost: aFin };
+    const stageRows = stages.map(([l, key]) => {
+      if (actualMode) {
+        return `<tr><td>${l}</td><td class="${expectedVals[key] >= 0 ? 'up' : 'down'}">${signedMoney(expectedVals[key])}</td><td class="${actualVals[key] >= 0 ? 'up' : 'down'}">${signedMoney(actualVals[key])}</td></tr>`;
+      }
+      return `<tr><td>${l}</td><td class="${expectedVals[key] >= 0 ? 'up' : 'down'}">${signedMoney(expectedVals[key])}</td></tr>`;
     }).join('');
-    return `<div class="card coordinator"><h2>Trade Strategy Coordinator</h2><p class="sub">Risk-adjusted profit = Revenue − Procurement − Financing − Risk cost. Pick a scenario.</p><div class="scenario-list">${opts}</div></div>`;
+    const totalVal = actualMode ? aImp + aExp + aFin : eImp + eExp + eFin;
+    const totalRow = actualMode
+      ? `<tr class="total-row"><td>Total</td><td class="${totalVal >= 0 ? 'up' : 'down'}">${signedMoney(eImp + eExp + eFin)}</td><td class="${totalVal >= 0 ? 'up' : 'down'}">${signedMoney(totalVal)}</td></tr>`
+      : `<tr class="total-row"><td>Total</td><td class="${totalVal >= 0 ? 'up' : 'down'}">${signedMoney(totalVal)}</td></tr>`;
+    const headRow = actualMode ? `<tr><th>Step</th><th>Expected</th><th>Actual</th></tr>` : `<tr><th>Step</th><th>Return</th></tr>`;
+    const subTxt = actualMode ? 'Actual vs expected for each step after the event.' : 'Expected return per step — aggregate of selected options.';
+    return `<div class="card profit-box">
+      <h2>Expected profit</h2>
+      <p class="sub">${subTxt}</p>
+      <div class="profit-total ${totalVal >= 0 ? 'up' : 'down'}">${signedMoney(totalVal)}</div>
+      <table class="profit-stages">
+        ${headRow}
+        ${stageRows}
+        ${totalRow}
+      </table>
+      <div class="fin-needed"><span>Total cumulative return (NPV)</span><b class="${historyNpv >= 0 ? 'up' : 'down'}">${signedMoney(historyNpv)}</b></div>
+    </div>`;
   }
 
   function recap() {
@@ -156,50 +182,67 @@
 
   function decisions() {
     const init = CFO.buildDecision(G, null);
-    choices = cloneSel(init.scenarios.find((s) => s.id === 'rec').selections);
-    let scenarioId = 'rec';
+    if (!pendingAdvance) choices = cloneSel(init.scenarios.find((s) => s.id === 'rec').selections);
 
     function renderDecisions() {
+      updateShell();
       const dec = CFO.buildDecision(G, choices);
       choices.trades = dec.trades;
+      const btnLabel = pendingAdvance ? 'Next month →' : 'Run simulation →';
       el.innerHTML =
-        title('Decisions', 'Optimize exports, imports and financing — then pick the coordinator strategy.', '3 AGENTS + COORDINATOR') +
-        `<div class="agent-cols">${exportColumn(dec.agents.export)}${importColumn(dec.agents.import)}${financeColumn(dec.agents.finance)}</div>` +
-        coordinatorPanel(dec.scenarios, scenarioId) +
-        `<div class="advance-bar"><button id="advance" class="primary">Advance month →</button></div>` +
+        title('Decisions', 'Choose import sources, export markets and financing.', 'DECISIONS') +
+        marketData() +
+        `<div class="fin-row">${financeColumn(dec.agents.finance)}${profitBox(choices)}</div>` +
+        `<div class="advance-bar"><button id="advance" class="primary${pendingAdvance ? ' gray' : ''}">${btnLabel}</button></div>` +
         recap();
 
-      document.querySelectorAll('.agent-slider').forEach((slider) => {
-        slider.oninput = () => {
-          setShare(slider.dataset.key, Number(slider.value));
-          scenarioId = 'current';
-          renderDecisions();
-        };
-      });
-      document.querySelectorAll('.agent-action[data-agent]').forEach((btn) => {
-        btn.onclick = () => {
-          const agent = btn.dataset.agent;
-          const key = btn.dataset.key;
-          const opt = btn.dataset.opt;
-          const arr = choices[agent][key] || [];
-          choices[agent][key] = arr.includes(opt) ? arr.filter((x) => x !== opt) : [...arr, opt];
-          scenarioId = 'current';
-          renderDecisions();
-        };
-      });
-      document.querySelectorAll('.scenario').forEach((btn) => {
-        btn.onclick = () => {
-          const id = btn.dataset.scenario;
-          const scen = dec.scenarios.find((s) => s.id === id);
-          if (scen) { choices = cloneSel(scen.selections); scenarioId = id; }
-          renderDecisions();
-        };
-      });
+      if (!pendingAdvance) {
+        document.querySelectorAll('.agent-slider').forEach((slider) => {
+          slider.oninput = () => {
+            setShare(slider.dataset.key, Number(slider.value));
+            renderDecisions();
+          };
+        });
+        document.querySelectorAll('[data-agent][data-opt]').forEach((btn) => {
+          btn.onclick = () => {
+            const agent = btn.dataset.agent;
+            const key = btn.dataset.key;
+            const opt = btn.dataset.opt;
+            const arr = choices[agent][key] || [];
+            choices[agent][key] = arr.includes(opt) ? arr.filter((x) => x !== opt) : [...arr, opt];
+            renderDecisions();
+          };
+        });
+      }
       document.querySelector('#advance').onclick = () => {
-        CFO.resolveChoices(G, choices);
-        save();
-        currentPage = 'Decisions';
-        render();
+        if (!pendingAdvance) {
+          // Snapshot the pre-event projection so the actual phase can show expected vs actual.
+          const mPre = G.market;
+          const revPre = G.company.monthlyRevenue * (0.88 + Math.max(0, Math.min(100, mPre.demandIndex)) / 100 * 0.4);
+          G.pendingOptionReturns = { import: {}, export: {} };
+          (CFO.IMPORT_SOURCING_OPTIONS ? CFO.IMPORT_SOURCING_OPTIONS(mPre) : []).forEach((s) => {
+            G.pendingOptionReturns.import[s.id] = revPre * 0.08 * (1 + Math.abs(s.supplyRisk) * 0.02);
+          });
+          (CFO.EXPORT_MARKET_OPTIONS ? CFO.EXPORT_MARKET_OPTIONS(mPre) : []).forEach((mk) => {
+            G.pendingOptionReturns.export[mk.id] = revPre * 0.04 * (1 + mk.marketRisk * 0.02);
+          });
+          G.pendingExpected = CFO.project(G, choices);
+          CFO.resolveChoices(G, choices, false);
+          if (G.phase === 'results') { render(); return; }
+          pendingAdvance = true;
+          G.pendingAdvance = true;
+          save();
+          renderDecisions();
+        } else {
+          CFO.advanceToNextMonth(G);
+          pendingAdvance = false;
+          G.pendingAdvance = false;
+          G.pendingExpected = null;
+          G.pendingOptionReturns = null;
+          save();
+          currentPage = 'Decisions';
+          render();
+        }
       };
     }
 
@@ -226,39 +269,69 @@
     </div>`;
   }
 
-  function market() {
+  function marketData() {
     const m = G.market;
-    const fx = CFO.CURRENCY_FX || {};
-    const sources = CFO.IMPORT_SOURCING_OPTIONS || [];
-    const markets = CFO.EXPORT_MARKET_OPTIONS || [];
+    const sources = CFO.IMPORT_SOURCING_OPTIONS ? CFO.IMPORT_SOURCING_OPTIONS(m) : [];
+    const markets = CFO.EXPORT_MARKET_OPTIONS ? CFO.EXPORT_MARKET_OPTIONS(m) : [];
+    const srcSel = choices.import.sourcing || [];
+    const mkSel = choices.export.market || [];
     const usdTxt = (m.usdChange > 0 ? '+' : '') + pct(m.usdChange);
     const usdCls = m.usdChange > 0.0005 ? 'up' : m.usdChange < -0.0005 ? 'down' : 'flat';
+    const revenue = G.company.monthlyRevenue || 0;
+    const RISK_COST_IMPORT = 0.005; // 0.5% of revenue per supply-risk point
+    const RISK_COST_EXPORT = 0.01;  // 1% of revenue per market-risk point
+
+    const signCls = (n) => (n < 0 ? 'down' : n > 0 ? 'up' : 'flat');
+    const actual = pendingAdvance;
+    const negEvent = !!(G.lastResult && G.lastResult.event && G.lastResult.event.impact === 'negative');
+    const posEvent = !!(G.lastResult && G.lastResult.event && G.lastResult.event.impact === 'positive');
+    const noteImport = actual
+      ? 'Expected = pre-event projection · Actual = lower if negative event, higher if positive — shown only for selected sources.'
+      : 'Expected profit = revenue × 8% × (1 + |supply risk| × 2%) — realistic margin, higher risk pays more.';
+    const noteExport = actual
+      ? 'Expected = pre-event projection · Actual = lower if negative event, higher if positive — shown only for selected markets.'
+      : 'Expected profit = revenue × 4% × (1 + competitive risk × 2%) — realistic margin, higher risk pays more.';
+
+    const actScale = (v) => (actual ? (negEvent ? v * 0.8 : posEvent ? v * 1.2 : v) : null);
 
     const srcRows = sources.map((s) => {
-      const costTxt = (s.cogsAdj > 0 ? '+' : '') + pct(s.cogsAdj);
-      const costCls = s.cogsAdj < 0 ? 'up' : s.cogsAdj > 0 ? 'down' : 'flat';
-      const riskCls = s.supplyRisk > 6 ? 'down' : s.supplyRisk < 0 ? 'up' : 'flat';
-      return `<tr><td><b>${s.label}</b></td><td><span class="val ${costCls}">${costTxt}</span></td><td><span class="val ${riskCls}">${s.supplyRisk > 0 ? '+' : ''}${s.supplyRisk}</span></td></tr>`;
+      const riskCost = s.supplyRisk * RISK_COST_IMPORT;
+      const sel = srcSel.includes(s.id);
+      const expVal = actual && G.pendingOptionReturns ? G.pendingOptionReturns.import[s.id] : revenue * 0.08 * (1 + Math.abs(s.supplyRisk) * 0.02);
+      const expCls = signCls(expVal);
+      const actVal = actScale(expVal);
+      const actTxt = actual ? (sel ? signedMoney(actVal) : '—') : '—';
+      const actCls = actual && sel ? signCls(actVal) : 'flat';
+      return `<tr><td><button class="market-pick${sel ? ' selected' : ''}" data-agent="import" data-key="sourcing" data-opt="${s.id}"${actual ? ' disabled' : ''}>${s.label}</button></td><td><span class="val flat">${Math.abs(s.supplyRisk)}</span></td><td><span class="val flat">${pct(Math.abs(riskCost))}</span></td><td><span class="val ${expCls}">${signedMoney(expVal)}</span></td><td><span class="val ${actCls}">${actTxt}</span></td></tr>`;
     }).join('');
 
     const mkRows = markets.map((mk) => {
-      const move = m.usdChange * (fx[mk.focus] || 1);
-      const moveTxt = (move >= 0 ? '+' : '') + (move * 100).toFixed(1) + '%';
-      const moveCls = move > 0.0005 ? 'up' : move < -0.0005 ? 'down' : 'flat';
-      return `<tr><td><b>${mk.label}</b></td><td>${mk.focus}</td><td><span class="val ${moveCls}">${moveTxt}</span></td></tr>`;
+      const riskCost = mk.marketRisk * RISK_COST_EXPORT;
+      const sel = mkSel.includes(mk.id);
+      const expVal = actual && G.pendingOptionReturns ? G.pendingOptionReturns.export[mk.id] : revenue * 0.04 * (1 + mk.marketRisk * 0.02);
+      const expCls = signCls(expVal);
+      const actVal = actScale(expVal);
+      const actTxt = actual ? (sel ? signedMoney(actVal) : '—') : '—';
+      const actCls = actual && sel ? signCls(actVal) : 'flat';
+      return `<tr><td><button class="market-pick${sel ? ' selected' : ''}" data-agent="export" data-key="market" data-opt="${mk.id}"${actual ? ' disabled' : ''}>${mk.label}</button></td><td><span class="val flat">${Math.abs(mk.marketRisk)}</span></td><td><span class="val flat">${pct(Math.abs(riskCost))}</span></td><td><span class="val ${expCls}">${signedMoney(expVal)}</span></td><td><span class="val ${actCls}">${actTxt}</span></td></tr>`;
     }).join('');
 
-    el.innerHTML = title('Market', 'Import sources and export markets — the data behind each decision.') +
-      `<div class="grid">
-        <div class="card"><h2>Import sources</h2><p class="sub">Your sourcing options — landed cost vs supply risk.</p>
-          <table class="big"><tr><th>Source</th><th>Cost adj.</th><th>Supply risk</th></tr>${srcRows}</table>
-          <p class="sub" style="margin-top:12px">Shipping <b>${m.shippingMultiplier.toFixed(2)}×</b> · Tariff <b>${pct(m.tariffRate)}</b> · USD <span class="val ${usdCls}">${usdTxt}</span></p>
-        </div>
-        <div class="card"><h2>Export markets</h2><p class="sub">Your focus markets and their currency move.</p>
-          <table class="big"><tr><th>Market</th><th>Currency</th><th>Move</th></tr>${mkRows}</table>
-          <p class="sub" style="margin-top:12px">Demand <b>${Math.round(m.demandIndex)}/100</b> · Recession <b>${Math.round(m.recessionRisk)}/100</b></p>
-        </div>
-      </div>` +
+    return `<div class="market-data">
+      <div class="card"><h2>Import sources</h2><p class="sub">Your sourcing options — landed cost vs supply risk.</p>
+        <table class="big"><tr><th>Source</th><th>Supply risk</th><th>Risk cost<br><small>0.5%/pt</small></th><th>Expected profit</th><th>Actual return</th></tr>${srcRows}</table>
+        <p class="sub" style="margin-top:12px">${noteImport}</p>
+        <p class="sub" style="margin-top:12px">Shipping <b>${m.shippingMultiplier.toFixed(2)}×</b> · Tariff <b>${pct(m.tariffRate)}</b> · USD <span class="val ${usdCls}">${usdTxt}</span></p>
+      </div>
+      <div class="card"><h2>Export markets</h2><p class="sub">Your focus markets and their currency move.</p>
+        <table class="big"><tr><th>Market</th><th>Competitive risk</th><th>Risk cost<br><small>1%/pt</small></th><th>Expected profit</th><th>Actual return</th></tr>${mkRows}</table>
+        <p class="sub" style="margin-top:12px">${noteExport}</p>
+        <p class="sub" style="margin-top:12px">Demand <b>${Math.round(m.demandIndex)}/100</b> · Recession <b>${Math.round(m.recessionRisk)}/100</b></p>
+      </div>
+    </div>`;
+  }
+
+  function market() {
+    el.innerHTML = title('Market', 'Financing cost and risk drivers behind your decisions.') +
       financingRatesCard() +
       riskSnapshotCard();
   }
@@ -365,7 +438,7 @@
     const totalFx = G.opportunities.reduce((s, o) => s + (o.fxExposure || 0), 0);
     const tradeRows = G.opportunities.map((o) => {
       const rec = o.eval.economicProfit > 0;
-      return `<tr${rec ? ' style="background:#eef4f1"' : ''}><td>${o.type === 'import' ? 'Import' : 'Export'}</td><td><b>${o.currency}</b></td><td>${money(o.capital)}</td><td>${(o.fxChange >= 0 ? '+' : '') + (o.fxChange * 100).toFixed(1)}%</td><td>${signedMoney(o.eval.economicProfit)}</td></tr>`;
+      return `<tr${rec ? ' class="good-row"' : ''}><td>${o.type === 'import' ? 'Import' : 'Export'}</td><td><b>${o.currency}</b></td><td>${money(o.capital)}</td><td>${(o.fxChange >= 0 ? '+' : '') + (o.fxChange * 100).toFixed(1)}%</td><td>${signedMoney(o.eval.economicProfit)}</td></tr>`;
     }).join('');
 
     el.innerHTML = title('Trade', 'Specific import and export trades in their own currencies.', 'TRADE') +
@@ -403,7 +476,7 @@
     el.innerHTML = title(G.bankrupt ? 'Company bankrupt' : 'Simulation complete', 'Twelve months of trading leadership, scored.', 'FINAL') +
       `<div class="result-hero"><div class="score">${s.score}</div><div class="rank">${s.ranking}</div></div>` +
       `<div class="card"><h2>Score breakdown</h2>
-        ${[['Cash growth', s.cashGrowth, '30%'], ['Profit growth', s.profitGrowth, '30%'], ['Risk management', s.riskManagement, '20%'], ['Credit rating', s.creditScore, '10%'], ['Survival', s.survival, '10%']].map((x) => `<div class="risk-list"><span>${x[0]} <b>${x[1]}/100 · ${x[2]}</b></span><div class="track"><i style="width:${x[1]}%"></i></div></div>`).join('')}
+        ${[['Cash growth', s.cashGrowth, '20%'], ['Profit growth', s.profitGrowth, '30%'], ['Risk management', s.riskManagement, '20%'], ['Credit rating', s.creditScore, '15%'], ['Survival', s.survival, '15%']].map((x) => `<div class="risk-list"><span>${x[0]} <b>${x[1]}/100 · ${x[2]}</b></span><div class="track"><i style="width:${x[1]}%"></i></div></div>`).join('')}
       </div>` +
       `<div class="metrics">${metric('Company value', money(s.finalCompanyValue), 'Cash + inventory − debt')}${metric('Total profit', signedMoney(s.totalProfit), 'Across 12 months')}${metric('Final cash', money(s.totalCash), 'Ending balance')}${metric('Credit rating', s.creditRating, 'Final')}</div>` +
       `<div class="advance-bar"><button class="primary" id="again">↻ Play again</button></div>`;
@@ -414,6 +487,7 @@
 
   function newGame() {
     G = CFO.createGame(Math.floor(Math.random() * 0xffffffff));
+    pendingAdvance = false;
     save();
     currentPage = 'Decisions';
     render();
@@ -421,6 +495,7 @@
 
   /* ---------- init ---------- */
   G = load() || CFO.createGame(Math.floor(Math.random() * 0xffffffff));
+  pendingAdvance = !!(G && G.pendingAdvance);
   save();
 
   document.querySelectorAll('nav button').forEach((b) => {
@@ -428,6 +503,22 @@
   });
   document.querySelector('.menu').onclick = () => document.querySelector('aside').classList.toggle('open');
   document.querySelector('#newgame').onclick = () => newGame();
+
+  /* ---------- dark theme ---------- */
+  const THEME_KEY = 'trade-cfo-theme';
+  const themeBtn = document.querySelector('#theme-toggle');
+  function applyTheme(dark) {
+    document.body.classList.toggle('dark', dark);
+    if (themeBtn) themeBtn.textContent = dark ? '◐ Dark' : '◐ Light';
+  }
+  let theme = null;
+  try { theme = localStorage.getItem(THEME_KEY); } catch (e) {}
+  applyTheme(theme !== 'light'); // dark by default
+  if (themeBtn) themeBtn.onclick = () => {
+    const dark = !document.body.classList.contains('dark');
+    applyTheme(dark);
+    try { localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light'); } catch (e) {}
+  };
 
   render();
 })();

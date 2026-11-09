@@ -1,0 +1,290 @@
+/* Trade CFO — dark theme. Applied when <body class="dark">. */
+
+body.dark {
+  --ink: #e7efe9;
+  --muted: #8fa39c;
+  --green: #2f6e5e;
+  --sage: #63a08f;
+  --orange: #e0805a;
+  --paper: #0f1513;
+  --line: #26332e;
+  --yellow: #e4b85d;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* ---------- Shell ---------- */
+body.dark aside {
+  background: #10211c;
+}
+body.dark header {
+  background: #141d1a;
+}
+body.dark .actions button,
+body.dark .outline {
+  border-color: #2c3a34;
+  background: #1b2723;
+  color: var(--ink);
+}
+body.dark .actions .primary,
+body.dark .primary {
+  background: var(--green);
+  color: #fff;
+}
+body.dark .project small {
+  color: var(--muted);
+}
+body.dark .project span {
+  color: var(--yellow);
+}
+
+/* ---------- Cards & surfaces ---------- */
+body.dark .metric,
+body.dark .card,
+body.dark .agent-col,
+body.dark .d-option,
+body.dark .agent-action,
+body.dark .scenario,
+body.dark .market-pick,
+body.dark .sheet-tabs button {
+  background: #16201c;
+  border-color: var(--line);
+  color: var(--ink);
+}
+body.dark .metric b,
+body.dark .card h2,
+body.dark .d-head b,
+body.dark .d-option b,
+body.dark .agent-action b,
+body.dark .scenario b,
+body.dark .market-pick,
+body.dark .agent-col-head b {
+  color: var(--ink);
+}
+body.dark .metric small {
+  color: #63a08f;
+}
+body.dark .metric.warn small {
+  color: var(--orange);
+}
+body.dark .d-option span,
+body.dark .agent-action span,
+body.dark .scenario small,
+body.dark .sub,
+body.dark .agent-col-sum,
+body.dark .agent-col-head small {
+  color: var(--muted);
+}
+
+/* ---------- Status / pills / badges ---------- */
+body.dark .status {
+  background: #1c3a32;
+  color: #7fd6b8;
+}
+body.dark .pill {
+  background: #1c3a32;
+  color: #7fd6b8;
+}
+body.dark .pill.warn {
+  background: #3d2f16;
+  color: var(--yellow);
+}
+
+/* ---------- Charts / tracks / bars ---------- */
+body.dark .track,
+body.dark .horizontal-bars > div > i,
+body.dark .timeline i {
+  background: #22302b;
+}
+body.dark .hbar {
+  background: var(--line);
+}
+
+/* ---------- Events ---------- */
+body.dark .event.good {
+  background: #17302a;
+  border-color: #2c5a49;
+}
+body.dark .event.bad {
+  background: #362019;
+  border-color: #5c3427;
+}
+body.dark .event b {
+  color: var(--ink);
+}
+body.dark .chips span {
+  background: #1b2723;
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+/* ---------- Decision options ---------- */
+body.dark .d-option.active,
+body.dark .d-option.selected {
+  background: #1d3a32;
+  border-color: var(--sage);
+  box-shadow: inset 3px 0 0 var(--sage);
+}
+body.dark .d-option:hover,
+body.dark .agent-action:hover,
+body.dark .scenario:hover,
+body.dark .market-pick:hover {
+  border-color: var(--sage);
+}
+
+/* ---------- Recommendation / lesson / recap ---------- */
+body.dark .rec {
+  background: #2a2517;
+  border-color: #4d4322;
+}
+body.dark .rec i {
+  color: var(--yellow);
+}
+body.dark .lesson,
+body.dark .recap {
+  background: #141f1b;
+  border-color: var(--sage);
+}
+body.dark .lesson p.better {
+  color: var(--sage);
+}
+
+/* ---------- Agent rows ---------- */
+body.dark .agent-a {
+  background: #1d3a32;
+  border-color: #2c5a49;
+}
+body.dark .agent-b {
+  background: #232838;
+  border-color: #39415f;
+}
+body.dark .agg {
+  background: #2a2517;
+  border-color: #4d4322;
+}
+body.dark .agent-row b,
+body.dark .agent-row p b {
+  color: var(--ink);
+}
+body.dark .agent-action i {
+  background: #1c3a32;
+  color: #7fd6b8;
+}
+body.dark .agent-action.recommended,
+body.dark .agent-action.selected {
+  background: #1d3a32;
+  border-color: var(--sage);
+  box-shadow: inset 3px 0 0 var(--sage);
+}
+body.dark .agent-action.selected::after {
+  color: var(--sage);
+}
+
+/* ---------- Portfolio / scenarios ---------- */
+body.dark .opp.included,
+body.dark .scenario.active,
+body.dark .market-pick.selected {
+  background: #1d3a32;
+  border-color: var(--sage);
+  box-shadow: inset 3px 0 0 var(--sage);
+  color: var(--ink);
+}
+body.dark .opp-metrics > div {
+  background: #131c18;
+  border-color: var(--line);
+}
+body.dark .opp-metrics b,
+body.dark .opp-metrics label,
+body.dark .opp-head b {
+  color: var(--ink);
+}
+
+/* ---------- Tables ---------- */
+body.dark th {
+  color: var(--muted);
+}
+body.dark td {
+  border-bottom-color: #22302b;
+}
+body.dark .profit-stages td,
+body.dark .hbar-row td {
+  border-bottom-color: #22302b;
+}
+body.dark .rate-now td {
+  background: #1d3a32;
+  font-weight: 600;
+}
+body.dark .good-row td {
+  background: #1d3a32;
+}
+
+/* ---------- Expected vs actual ---------- */
+body.dark .expected-vs-actual > div,
+body.dark .result,
+body.dark .flow-col {
+  background: #131c18;
+  border-color: var(--line);
+}
+body.dark .expected-vs-actual .good {
+  background: #17302a;
+  border-color: #2c5a49;
+}
+body.dark .expected-vs-actual .bad {
+  background: #362019;
+  border-color: #5c3427;
+}
+
+/* ---------- Callout ---------- */
+body.dark .callout {
+  background: #2a2517;
+  border-color: #4d4322;
+}
+body.dark .callout p {
+  color: var(--muted);
+}
+
+/* ---------- Profit / value colors (brighter for dark) ---------- */
+body.dark .profit-total.up,
+body.dark .profit-stages .up,
+body.dark .val.up,
+body.dark .fm b.up,
+body.dark .expected-vs-actual .good b {
+  color: #4cc39a;
+}
+body.dark .profit-total.down,
+body.dark .profit-stages .down,
+body.dark .val.down,
+body.dark .expected-vs-actual .bad b {
+  color: #e06b5a;
+}
+body.dark .fin-needed b.up {
+  color: #4cc39a;
+}
+body.dark .fin-needed b.down {
+  color: #e06b5a;
+}
+body.dark .fin-seg.debt {
+  background: #2a2517;
+  border-color: #4d4322;
+}
+body.dark .fin-seg.debt b {
+  color: var(--yellow);
+}
+body.dark .val.flat {
+  color: var(--muted);
+}
+
+/* ---------- Misc ---------- */
+body.dark .result-hero {
+  background: #173f36;
+}
+body.dark .slider-val,
+body.dark .slider-pct {
+  color: var(--sage);
+}
+body.dark input[type="range"] {
+  accent-color: var(--sage);
+}
+body.dark .toggle input {
+  accent-color: var(--sage);
+}
