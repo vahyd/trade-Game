@@ -86,7 +86,7 @@
         <div class="fin-slider">
           <div class="cash-bar-line"><span>Available cash</span><b>${money(G.company.cash)}</b></div>
           <input type="range" class="agent-slider" data-key="cash" min="0" max="80" step="1" value="${cashPct}"${pendingAdvance ? ' disabled' : ''}>
-          <div class="slider-meta"><span class="slider-val">${money(plan.cashAmount)} buffer</span><span class="slider-rec">${money(plan.factoringAmount)} factoring</span></div>
+          <div class="slider-meta"><span class="slider-val">${money(plan.cashAmount)} buffer</span><span class="slider-rec">${money(plan.factoringAmount)} factoring · ${money(plan.factoringAmount * plan.factoringRate)}/mo</span></div>
         </div>
         <div class="fin-segments">
           ${seg('Debt · 20%', plan.debtAmount, plan.debtRate, 'burden').replace('fin-seg', 'fin-seg debt')}
@@ -97,62 +97,64 @@
   }
 
   function profitBox(sel) {
-    const p = CFO.project(G, sel);
+    const historyNpv = (G.history || []).reduce((s, h, i) => s + (h.profit || 0) / Math.pow(1.01, i + 1), 0);
+    const exp = G.pendingExpected || null;
+    const actualMode = !!(pendingAdvance && exp);
+
+    // Both columns come from the engine, so this box always agrees with the
+    // "Last month — event vs expected" recap (expectedProfit / profit).
+    const expected = actualMode ? exp : CFO.project(G, sel);
+    const expectedVals = {
+      importContribution: expected.importContribution,
+      exportContribution: expected.exportContribution,
+      financingCost: expected.financingCost,
+    };
+    const expectedTotal = expected.profit;
+
+    const last = G.lastResult;
+    const actualVals = actualMode && last
+      ? {
+          importContribution: last.importContribution != null ? last.importContribution : expected.importContribution,
+          exportContribution: last.exportContribution != null ? last.exportContribution : expected.exportContribution,
+          financingCost: last.financingCost != null ? last.financingCost : expected.financingCost,
+        }
+      : expectedVals;
+    const actualTotal = actualMode && last && last.profit != null ? last.profit : expectedTotal;
+
     const stages = [
       ['Import', 'importContribution'],
       ['Export', 'exportContribution'],
       ['Financing', 'financingCost'],
     ];
-    const historyNpv = (G.history || []).reduce((s, h, i) => s + (h.profit || 0) / Math.pow(1.01, i + 1), 0);
-    const exp = G.pendingExpected || null;
-    const actualMode = !!(pendingAdvance && exp);
-    const negEvent = !!(G.lastResult && G.lastResult.event && G.lastResult.event.impact === 'negative');
-    const posEvent = !!(G.lastResult && G.lastResult.event && G.lastResult.event.impact === 'positive');
-
-    const srcIds = (sel.import && sel.import.sourcing) || [];
-    const mkIds = (sel.export && sel.export.market) || [];
-    const mPre = G.market;
-    const revPre = G.company.monthlyRevenue * (0.88 + Math.max(0, Math.min(100, mPre.demandIndex)) / 100 * 0.4);
-    let eImp = 0, eExp = 0;
-    (CFO.IMPORT_SOURCING_OPTIONS ? CFO.IMPORT_SOURCING_OPTIONS(mPre) : []).forEach((s) => {
-      if (srcIds.includes(s.id)) eImp += revPre * 0.08 * (1 + Math.abs(s.supplyRisk) * 0.02);
-    });
-    (CFO.EXPORT_MARKET_OPTIONS ? CFO.EXPORT_MARKET_OPTIONS(mPre) : []).forEach((mk) => {
-      if (mkIds.includes(mk.id)) eExp += revPre * 0.04 * (1 + mk.marketRisk * 0.02);
-    });
-    const eFin = actualMode ? exp.financingCost : p.financingCost;
-
-    let aImp = eImp, aExp = eExp, aFin = eFin;
-    if (actualMode) {
-      if (negEvent) { aImp = eImp * 0.8; aExp = eExp * 0.8; }
-      else if (posEvent) { aImp = eImp * 1.2; aExp = eExp * 1.2; }
-      // Double factoring burden can push actual financing below expected.
-      aFin = eFin - (G.lastResult && G.lastResult.financingPenalty || 0);
-    }
-
-    const expectedVals = { importContribution: eImp, exportContribution: eExp, financingCost: eFin };
-    const actualVals = { importContribution: aImp, exportContribution: aExp, financingCost: aFin };
     const stageRows = stages.map(([l, key]) => {
       if (actualMode) {
         return `<tr><td>${l}</td><td class="${expectedVals[key] >= 0 ? 'up' : 'down'}">${signedMoney(expectedVals[key])}</td><td class="${actualVals[key] >= 0 ? 'up' : 'down'}">${signedMoney(actualVals[key])}</td></tr>`;
       }
       return `<tr><td>${l}</td><td class="${expectedVals[key] >= 0 ? 'up' : 'down'}">${signedMoney(expectedVals[key])}</td></tr>`;
     }).join('');
-    const totalVal = actualMode ? aImp + aExp + aFin : eImp + eExp + eFin;
+
+    const eventAdjRow = actualMode && last && Math.abs(last.eventAdjustment || 0) > 0.5
+      ? `<tr class="event-adj-row"><td>Event impact</td><td>—</td><td class="${last.eventAdjustment >= 0 ? 'up' : 'down'}">${signedMoney(last.eventAdjustment)}</td></tr>`
+      : '';
+
     const totalRow = actualMode
-      ? `<tr class="total-row"><td>Total</td><td class="${totalVal >= 0 ? 'up' : 'down'}">${signedMoney(eImp + eExp + eFin)}</td><td class="${totalVal >= 0 ? 'up' : 'down'}">${signedMoney(totalVal)}</td></tr>`
-      : `<tr class="total-row"><td>Total</td><td class="${totalVal >= 0 ? 'up' : 'down'}">${signedMoney(totalVal)}</td></tr>`;
+      ? `<tr class="total-row"><td>Total</td><td class="${expectedTotal >= 0 ? 'up' : 'down'}">${signedMoney(expectedTotal)}</td><td class="${actualTotal >= 0 ? 'up' : 'down'}">${signedMoney(actualTotal)}</td></tr>`
+      : `<tr class="total-row"><td>Total</td><td class="${expectedTotal >= 0 ? 'up' : 'down'}">${signedMoney(expectedTotal)}</td></tr>`;
     const headRow = actualMode ? `<tr><th>Step</th><th>Expected</th><th>Actual</th></tr>` : `<tr><th>Step</th><th>Return</th></tr>`;
-    const subTxt = actualMode ? 'Actual vs expected for each step after the event.' : 'Expected return per step — aggregate of selected options.';
+    const subTxt = actualMode
+      ? `Actual vs expected for each step after the event (M${last ? last.month : G.month}) — totals match the recap below.`
+      : `Expected return per step for this month (M${G.month}) — engine projection before the event.`;
     return `<div class="card profit-box">
       <h2>Expected profit</h2>
       <p class="sub">${subTxt}</p>
-      <div class="profit-total ${totalVal >= 0 ? 'up' : 'down'}">${signedMoney(totalVal)}</div>
+      <div class="profit-total ${expectedTotal >= 0 ? 'up' : 'down'}">${signedMoney(expectedTotal)}</div>
       <table class="profit-stages">
         ${headRow}
         ${stageRows}
+        ${eventAdjRow}
         ${totalRow}
       </table>
+      <div class="fin-needed"><span>Actual profit this month</span><b class="${actualTotal >= 0 ? 'up' : 'down'}">${signedMoney(actualTotal)}</b><small>${actualMode ? 'after the event' : 'projected'}</small></div>
       <div class="fin-needed"><span>Total cumulative return (NPV)</span><b class="${historyNpv >= 0 ? 'up' : 'down'}">${signedMoney(historyNpv)}</b></div>
     </div>`;
   }
@@ -169,13 +171,13 @@
       : '';
     const compare = last.expectedProfit != null
       ? `<div class="expected-vs-actual">
-          <div><span>Expected profit</span><b>${signedMoney(last.expectedProfit)}</b><small>before the event</small></div>
+          <div class="${last.expectedProfit >= 0 ? 'good' : 'bad'}"><span>Expected profit</span><b>${signedMoney(last.expectedProfit)}</b><small>before the event</small></div>
           <div class="${last.profit >= 0 ? 'good' : 'bad'}"><span>Actual profit</span><b>${signedMoney(last.profit)}</b><small>after the event</small></div>
           <div class="${last.profit - last.expectedProfit >= 0 ? 'good' : 'bad'}"><span>Difference</span><b>${signedMoney(last.profit - last.expectedProfit)}</b><small>event impact</small></div>
         </div>`
       : '';
     const outcome = (evt || compare)
-      ? `<div class="card"><h2>Last month — event vs expected</h2>${evt}${compare}</div>`
+      ? `<div class="card"><h2>${pendingAdvance ? 'This month' : 'Last month'} (M${last.month}) — event vs expected</h2>${evt}${compare}</div>`
       : '';
     return outcome + `<div class="card"><h2>Monthly profit</h2><div class="profit-chart">${bars}</div></div>`;
   }

@@ -47,7 +47,7 @@
   function financingPlan(company, market, totalCapital, shares) {
     const debtRate = INTEREST_RATE[company.creditRating] + (market.interestSurcharge || 0);
     const cashRate = SHORT_RATE;
-    const factoringRate = Math.max(0.012, debtRate + 0.006);
+    const factoringRate = Math.max(0.03, debtRate + 0.024);
     const c = clamp(shares.cash || 0, 0, 1);
     const f = clamp(shares.factoring || 0, 0, 1);
     const sum = (c + f) || 1;
@@ -501,10 +501,14 @@
     const debtForInterest = company.debt + Math.min(funded * plan.debtShare, plan.maxDebt);
     const selectionFee = (mods.sources.length + mods.markets.length) * revenue * 0.03;
     const interest = debtForInterest * (INTEREST_RATE[company.creditRating] + market.interestSurcharge + mods.rateAdj);
+    // Carrying cost of the chosen mix: factoring is the most expensive source, so
+    // allocating more share to factoring raises the financing burden accordingly.
+    const cashCost = funded * plan.cashShare * plan.cashRate;
+    const factoringCost = funded * plan.factoringShare * plan.factoringRate;
     const sourcingEffect = -revenue * (mods.cogsAdj + (mods.supplyRisk || 0) * 0.005);
     const importContribution = importTradeProfit + sourcingEffect;
     const exportContribution = exportTradeProfit;
-    const financingCost = -interest - selectionFee;
+    const financingCost = -interest - selectionFee - cashCost - factoringCost;
     const profit = importContribution + exportContribution + financingCost;
 
     const assets = company.cash + company.inventory;
@@ -675,7 +679,7 @@
     const factoringShare = plan.factoringShare;
     const debtShare = plan.debtShare;
     const outcomes = [];
-    let fxImpact = 0, decisionProfit = 0;
+    let fxImpact = 0, importDecisionProfit = 0, exportDecisionProfit = 0;
     const next = { ...company, markets: [...company.markets], suppliers: [...company.suppliers] };
     const selected = new Set(selectedIds);
     const creditEase = posture.creditEase || 0;
@@ -689,7 +693,7 @@
         const margin = o.capital * IMPORT_MARGIN * (1 + (mods.supplyRisk || 0) * 0.02);
         const fx = -o.fxExposure * fxChange;
         fxImpact += fx * FX_HEDGE_RATIO;
-        decisionProfit += margin;
+        importDecisionProfit += margin;
         outcomes.push({ title: 'Import resold', detail: `You bought ${money(o.capital)} of ${o.currency} goods and resold them for a ${money(margin)} margin. FX impact ${money(fx)} on a ${(fxChange * 100).toFixed(1)}% ${o.currency} move.`, good: true });
       } else if (o.type === 'export') {
         if (!mods.markets.length) return;
@@ -697,12 +701,12 @@
         const risk = clamp(o.creditRisk + creditEase + mods.exportRiskAdj, 0, 0.9) * (1 - factoringShare);
         if (rng.chance(risk)) {
           const loss = o.capital * DEFAULT_LOSS_RATE;
-          decisionProfit -= loss;
+          exportDecisionProfit -= loss;
           outcomes.push({ title: 'Export buyer defaulted', detail: `Your ${o.currency} buyer defaulted on the ${money(o.capital)} export. You wrote off ${money(loss)}.`, good: false });
         } else {
           const fx = o.fxExposure * fxChange;
           fxImpact += fx * FX_HEDGE_RATIO;
-          decisionProfit += margin;
+          exportDecisionProfit += margin;
           outcomes.push({ title: 'Export shipped and settled', detail: `You shipped ${money(o.capital)} to the ${o.currency} buyer and earned ${money(margin)}. FX impact ${money(fx)} (${(fxChange * 100).toFixed(1)}% ${o.currency} move).`, good: true });
         }
       }
@@ -725,24 +729,34 @@
     const revenue = next.monthlyRevenue * demandMultiplier;
     const selectionFee = (mods.sources.length + mods.markets.length) * revenue * 0.03;
     const interest = debtForInterest * (INTEREST_RATE[next.creditRating] + market.interestSurcharge + mods.rateAdj) + selectionFee;
+    // Carrying cost of the chosen mix (same methodology as the expected projection).
+    const cashCost = funded * plan.cashShare * plan.cashRate;
+    const factoringCost = funded * plan.factoringShare * plan.factoringRate;
     const sourcingEffect = -revenue * (mods.cogsAdj + (mods.supplyRisk || 0) * 0.005 + (market.costPressure || 0));
 
     // Actual profit uses only the items the UI shows (same methodology as the expected projection).
-    let profit = decisionProfit + sourcingEffect - interest;
+    let profit = importDecisionProfit + exportDecisionProfit + sourcingEffect - interest - cashCost - factoringCost;
     // If the cash buffer cannot cover a negative return, factoring doubles as a burden.
     let financingPenalty = 0;
     if (profit < 0 && Math.abs(profit) > (plan.cashAmount || 0)) {
       financingPenalty = (plan.factoringAmount || 0) * (plan.factoringRate || 0);
       profit -= financingPenalty;
     }
-    // Negative events must produce an actual monthly return below zero.
+    // Negative events must produce an actual return below the expected projection;
+    // the company can still end the month positive, just less than expected.
     if (eventImpact === 'negative') {
-      const floor = Math.max(1000, Math.round(Math.abs(expectedProfit) * 0.1));
-      profit = Math.min(profit, -floor);
+      const hit = Math.max(1000, Math.round(Math.abs(expectedProfit) * 0.25));
+      profit = Math.min(profit, expectedProfit - hit);
     } else if (eventImpact === 'positive') {
       const boost = Math.max(1000, Math.round(Math.abs(expectedProfit) * 0.1));
       profit = Math.max(profit, expectedProfit + boost);
     }
+    // Breakdown for the expected-profit box: the three displayed stages plus the
+    // event floor/boost as an explicit adjustment, so rows always reconcile to profit.
+    const importContribution = importDecisionProfit + sourcingEffect;
+    const exportContribution = exportDecisionProfit;
+    const financingCost = -interest - cashCost - factoringCost - financingPenalty;
+    const eventAdjustment = profit - (importContribution + exportContribution + financingCost);
     const cashDelta = profit;
     next.cash += cashDelta;
     next.debt += newDebt;
@@ -766,6 +780,7 @@
       result: {
         month, profit, cashBefore: company.cash, cashAfter: next.cash, debtBefore: company.debt, debtAfter: next.debt,
         creditRating: next.creditRating, riskScore: next.riskScore, outcomes, financingPenalty,
+        importContribution, exportContribution, financingCost, eventAdjustment,
       },
     };
   }
