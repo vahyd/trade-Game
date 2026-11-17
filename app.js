@@ -485,7 +485,12 @@
     document.querySelector('#again').onclick = () => newGame();
   }
 
-  const pages = { Decisions: decisions, Market: market, Capital: capital, TradeStrategy: tradeStrategy };
+  const pages = {
+    Decisions: decisions, Market: market, Capital: capital, TradeStrategy: tradeStrategy,
+    CashFlow: () => window.CFOPLATFORM.cashflowPage(el, G, choices),
+    AiCfo: () => window.CFOPLATFORM.advisorPage(el, G, choices),
+    Scenarios: () => window.CFOPLATFORM.scenariosPage(el, G, choices),
+  };
 
   function newGame() {
     G = CFO.createGame(Math.floor(Math.random() * 0xffffffff));

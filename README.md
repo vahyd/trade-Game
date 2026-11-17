@@ -19,10 +19,11 @@ Then visit `http://localhost:8080`.
 - **Expected vs. actual profit box** — step-by-step breakdown (Import / Export / Financing) with an Event-impact row; totals always match the *"This month — event vs expected"* recap card
 - **Financing mix slider** — cash vs. factoring trade-off with live monthly factoring cost shown on the slider
 - **Event engine** — 14 economic, geopolitical, and operational shocks that land after you commit
-- **Tabs** — Decisions, Market (financing rates + risk snapshot), Capital (financing sources), Trade (specific trades + portfolio structure)
+- **Tabs** — Decisions, Market (financing rates + risk snapshot), Capital (financing sources), Trade (specific trades + portfolio structure), **Cash Flow** (13-week forecast + working capital), **AI CFO** (conversational advisor), **Scenarios** (shock stress-tests)
 - **Dark / light theme**, monthly profit chart, cumulative NPV line, rate history
 - **Auto-save** to localStorage — refresh keeps your game in progress
 - **No build step** — plain HTML/CSS/JS
+- **AI CFO platform foundation** — the shared engine also powers three advisory tabs (Cash Flow, AI CFO, Scenarios) on the path to a commercial AI CFO product (see `docs/AI-CFO-PLATFORM.md`)
 
 ---
 

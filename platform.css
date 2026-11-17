@@ -1,0 +1,23 @@
+/* Trade CFO — AI CFO Platform tabs (Cash Flow, Advisor, Scenarios). */
+
+.cf-grid{grid-template-columns:1.2fr 1fr}
+@media(max-width:900px){.cf-grid{grid-template-columns:1fr}}
+
+.chat-card{display:flex;flex-direction:column;gap:12px}
+.chat-log{max-height:430px;overflow-y:auto;display:grid;gap:8px;padding:4px}
+.chat-msg{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.chat-msg.user{border-color:var(--sage)}
+.chat-msg b{display:block;font-size:9px;letter-spacing:1px;color:var(--muted);margin-bottom:4px}
+.chat-msg.user b{color:var(--sage)}
+.chat-msg p{margin:0;font-size:13px;line-height:1.5}
+.chat-chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:999px;padding:6px 12px;font-size:11px;cursor:pointer}
+.chip:hover{border-color:var(--sage)}
+.chat-input{display:flex;gap:8px}
+.chat-input input{flex:1;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--paper);color:var(--ink)}
+
+.scenario-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
+.scenario-grid .market-pick{text-align:left}
+
+tr.warn td{background:#fbe9e4}
+body.dark tr.warn td{background:#362019}
